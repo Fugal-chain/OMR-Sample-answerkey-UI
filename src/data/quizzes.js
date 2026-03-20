@@ -64,10 +64,10 @@ export const QUIZZES = [
  * MCQ option color mapping
  */
 export const OPTION_COLORS = {
-  A: '#3B82F6',
-  B: '#10B981',
-  C: '#F59E0B',
-  D: '#EF4444',
+  A: '#16a34a',
+  B: '#16a34a',
+  C: '#16a34a',
+  D: '#16a34a',
 }
 
 /**

@@ -134,6 +134,7 @@ export function BulkImportDialog({
       subtitle="Import multiple answers at once"
       icon="📤"
       maxWidth={560}
+      allowBackgroundScroll
     >
       {showImportChoice ? (
         <div>

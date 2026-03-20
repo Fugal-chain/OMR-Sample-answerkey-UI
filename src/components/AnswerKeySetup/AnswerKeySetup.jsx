@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDndMonitor } from '@dnd-kit/core'
-import { Upload, Save, Trash2, Loader2 } from 'lucide-react'
+import { LoaderCircle, Save, Trash2, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAnswerKeyHistory } from '../../hooks/useAnswerKeyHistory.js'
 import { ANSWER_TAGS } from '../../data/quizzes.js'
-import { validateAllQuestions } from '../../utils/validation.js'
+import { validateAllQuestions, validateQuestion } from '../../utils/validation.js'
 import { ProgressBar } from '../ui/index.js'
 import { QuestionRow } from './QuestionRow.jsx'
 
-/**
- * Builds the initial questions array from the quiz's OMR configuration.
- */
 function buildInitialQuestions(omrConfiguration, savedQuestions = []) {
   const savedByQuestionNumber = new Map(
     (Array.isArray(savedQuestions) ? savedQuestions : []).map((question) => [
@@ -23,11 +20,17 @@ function buildInitialQuestions(omrConfiguration, savedQuestions = []) {
     const savedQuestion = savedByQuestionNumber.get(omrQ.questionNumber)
     const savedAnswer = savedQuestion?.answer || ''
     const savedTag = savedQuestion?.tag || findTagForOption(savedAnswer)
+    const totalBubbles =
+      omrQ.type === 'Numeric'
+        ? savedQuestion?.totalBubbles ?? omrQ.totalBubbles ?? 4
+        : undefined
 
     return {
       questionNumber: omrQ.questionNumber,
       type: omrQ.type,
+      points: savedQuestion?.points ?? 1,
       answer: omrQ.type === 'MCQ' ? savedAnswer : '',
+      totalBubbles,
       answers:
         omrQ.type === 'Numeric' && Array.isArray(savedQuestion?.answers)
           ? savedQuestion.answers
@@ -49,19 +52,27 @@ function isQuestionAnswered(question) {
 function clearQuestionValues(question) {
   return {
     ...question,
+    points: question.points ?? 1,
     answer: question.type === 'MCQ' ? '' : question.answer,
     answers: question.type === 'Numeric' ? [] : question.answers,
     tag: undefined,
   }
 }
 
-/**
- * AnswerKeySetup — the main answer-key editor panel (center column).
- *
- * Props:
- *  - onUndoRedoReady(fns) — exposes { undo, redo, canUndo, canRedo } to parent
- *  - onAutosaveStatus({ state, savedAt }) — reports autosave state to parent
- */
+function findFirstErrorQuestion(questions, errors) {
+  const firstEmptyQuestion = questions.find(
+    (question) => errors[question.questionNumber] && !isQuestionAnswered(question)
+  )
+
+  if (firstEmptyQuestion) return firstEmptyQuestion.questionNumber
+
+  return questions.find((question) => errors[question.questionNumber])?.questionNumber ?? null
+}
+
+function serializeQuestions(questions = []) {
+  return JSON.stringify(Array.isArray(questions) ? questions : [])
+}
+
 export function AnswerKeySetup({
   quiz,
   savedQuestions,
@@ -70,13 +81,35 @@ export function AnswerKeySetup({
   onBack,
   onSave,
   onBulkImport,
-  onUndoRedoReady,
-  onAutosaveStatus,
+  onStartTour,
+  onRegisterNavbarActions,
+  onSaveStatusChange,
+  enableDragDrop = true,
 }) {
-  const initialQuestions = useMemo(
-    () => buildInitialQuestions(quiz.omrConfiguration, savedQuestions),
-    [quiz.omrConfiguration, savedQuestions]
+  const [historySeed, setHistorySeed] = useState(() =>
+    buildInitialQuestions(quiz.omrConfiguration, savedQuestions)
   )
+  const [validationErrors, setValidationErrors] = useState({})
+  const [isManualSaving, setIsManualSaving] = useState(false)
+  const [highlightedQuestion, setHighlightedQuestion] = useState(null)
+  const [numericSuggestionsEnabled, setNumericSuggestionsEnabled] = useState(true)
+  const questionRefs = useRef(new Map())
+  const inputRefs = useRef(new Map())
+  const hasHydratedRef = useRef(false)
+  const onSaveRef = useRef(onSave)
+  const onSaveStatusChangeRef = useRef(onSaveStatusChange)
+
+  useEffect(() => {
+    setHistorySeed(buildInitialQuestions(quiz.omrConfiguration, savedQuestions))
+  }, [quiz.id, savedQuestions])
+
+  useEffect(() => {
+    onSaveRef.current = onSave
+  }, [onSave])
+
+  useEffect(() => {
+    onSaveStatusChangeRef.current = onSaveStatusChange
+  }, [onSaveStatusChange])
 
   const {
     questions,
@@ -85,70 +118,70 @@ export function AnswerKeySetup({
     redo,
     canUndo,
     canRedo,
-  } = useAnswerKeyHistory(initialQuestions)
+  } = useAnswerKeyHistory(historySeed)
 
-  const [validationErrors, setValidationErrors] = useState({})
-  const [isSaving, setIsSaving] = useState(false)
-  const bodyRef = useRef(null)
+  const questionList = useMemo(
+    () => (Array.isArray(questions) ? questions : []),
+    [questions]
+  )
+  const serializedQuestionList = useMemo(
+    () => serializeQuestions(questionList),
+    [questionList]
+  )
+  const serializedSavedQuestions = useMemo(
+    () => serializeQuestions(savedQuestions),
+    [savedQuestions]
+  )
 
-  /* ---- expose undo/redo to parent ---- */
   useEffect(() => {
-    onUndoRedoReady?.({ undo, redo, canUndo, canRedo })
-  }, [undo, redo, canUndo, canRedo, onUndoRedoReady])
-
-  /* ---- helpers to update one question ---- */
-  const updateQuestion = useCallback((questionNumber, patch) => {
-    setQuestions((currentQuestions = []) =>
-      currentQuestions.map((q) =>
-        q.questionNumber === questionNumber ? { ...q, ...patch } : q
-      )
-    )
-
-    // Immediately clear validation error for this question if the new value is valid
-    setValidationErrors((prev) => {
-      if (!prev[questionNumber]) return prev
-      const next = { ...prev }
-      delete next[questionNumber]
-      return next
+    onRegisterNavbarActions?.({
+      undo,
+      redo,
+      canUndo,
+      canRedo,
+      startTour: onStartTour,
     })
-  }, [setQuestions])
 
-  /* ---- bulk import ---- */
+    return () => onRegisterNavbarActions?.(null)
+  }, [canRedo, canUndo, onRegisterNavbarActions, onStartTour, redo, undo])
+
   useEffect(() => {
     if (!bulkImportPayload?.entries?.length) return
     if (bulkImportPayload.quizId !== quiz.id) return
 
-    setQuestions((currentQuestions = []) =>
-      currentQuestions.map((question) => {
-        const importedEntry = bulkImportPayload.entries.find(
-          (entry) => entry.questionNumber === question.questionNumber
-        )
+    const nextQuestions = questionList.map((question) => {
+      const importedEntry = bulkImportPayload.entries.find(
+        (entry) => entry.questionNumber === question.questionNumber
+      )
 
-        if (!importedEntry) return question
+      if (!importedEntry) return question
 
-        const importedAnswer = String(importedEntry.answer ?? '').trim().toUpperCase()
+      const importedAnswer = String(importedEntry.answer ?? '').trim().toUpperCase()
 
-        if (question.type === 'MCQ') {
-          return {
-            ...question,
-            answer: importedAnswer,
-            tag: findTagForOption(importedAnswer),
-          }
-        }
-
+      if (question.type === 'MCQ') {
         return {
           ...question,
-          answers: importedAnswer ? [importedAnswer] : [],
+          answer: importedAnswer,
+          tag: findTagForOption(importedAnswer),
         }
-      })
-    )
-    setValidationErrors({})
-    onBulkImportApplied?.()
-  }, [bulkImportPayload, onBulkImportApplied, quiz.id, setQuestions])
+      }
 
-  /* ---- drag-and-drop monitor ---- */
+      return {
+        ...question,
+        answers: importedAnswer ? [importedAnswer] : [],
+      }
+    })
+
+    setQuestions(nextQuestions)
+    setValidationErrors(validateAllQuestions(nextQuestions))
+
+    onBulkImportApplied?.()
+  }, [bulkImportPayload, onBulkImportApplied, questionList, quiz.id, setQuestions])
+
   useDndMonitor({
     onDragEnd(event) {
+      if (!enableDragDrop) return
+
       const tag = event.active?.data?.current?.tag
       const overData = event.over?.data?.current
 
@@ -163,28 +196,84 @@ export function AnswerKeySetup({
     },
   })
 
-  /* ---- save ---- */
-  const handleSave = () => {
-    const errors = validateAllQuestions(questionList)
-    setValidationErrors(errors)
+  useEffect(() => {
+    if (!questionList.length) return
 
-    if (Object.keys(errors).length > 0) {
-      // Scroll to first error
-      const firstErrorQNum = Object.keys(errors).map(Number).sort((a, b) => a - b)[0]
-      const el = document.getElementById(`question-row-${firstErrorQNum}`)
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
+    if (!hasHydratedRef.current) {
+      hasHydratedRef.current = true
       return
     }
 
-    setIsSaving(true)
-    // Simulate small save delay for UX
-    setTimeout(() => {
-      onSave(questionList)
-      setIsSaving(false)
-      toast.success('Answer key saved successfully')
-    }, 500)
+    if (serializedQuestionList === serializedSavedQuestions) {
+      onSaveStatusChangeRef.current?.({ state: 'saved', savedAt: Date.now() })
+      return
+    }
+
+    onSaveStatusChangeRef.current?.({ state: 'saving', savedAt: null })
+    const autosaveTimer = window.setTimeout(() => {
+      onSaveRef.current?.(questionList)
+      onSaveStatusChangeRef.current?.({ state: 'saved', savedAt: Date.now() })
+    }, 400)
+
+    return () => window.clearTimeout(autosaveTimer)
+  }, [questionList, serializedQuestionList, serializedSavedQuestions])
+
+  useEffect(() => {
+    if (!highlightedQuestion) return undefined
+
+    const timer = window.setTimeout(() => setHighlightedQuestion(null), 2200)
+    return () => window.clearTimeout(timer)
+  }, [highlightedQuestion])
+
+  const updateQuestion = (questionNumber, patch) => {
+    const nextQuestions = questionList.map((question) =>
+      question.questionNumber === questionNumber ? { ...question, ...patch } : question
+    )
+
+    const updatedQuestion = nextQuestions.find(
+      (question) => question.questionNumber === questionNumber
+    )
+    const nextError = updatedQuestion ? validateQuestion(updatedQuestion) : null
+
+    setQuestions(nextQuestions)
+    setValidationErrors((prev) => {
+      const next = { ...prev }
+      if (nextError) next[questionNumber] = nextError
+      else delete next[questionNumber]
+      return next
+    })
+  }
+
+  const focusQuestion = (questionNumber) => {
+    const rowNode = questionRefs.current.get(questionNumber)
+    const inputNode = inputRefs.current.get(questionNumber)
+
+    rowNode?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    window.setTimeout(() => {
+      inputNode?.focus?.()
+    }, 180)
+    setHighlightedQuestion(questionNumber)
+  }
+
+  const handleSave = async () => {
+    const errors = validateAllQuestions(questionList)
+    setValidationErrors(errors)
+
+    const firstErrorQuestion = findFirstErrorQuestion(questionList, errors)
+    if (firstErrorQuestion) {
+      focusQuestion(firstErrorQuestion)
+      return
+    }
+
+    setIsManualSaving(true)
+    onSaveStatusChangeRef.current?.({ state: 'saving', savedAt: null })
+    onSaveRef.current?.(questionList)
+
+    await new Promise((resolve) => window.setTimeout(resolve, 300))
+
+    setIsManualSaving(false)
+    onSaveStatusChangeRef.current?.({ state: 'saved', savedAt: Date.now() })
+    toast.success('Answer key saved successfully')
   }
 
   const handleClearAll = () => {
@@ -197,173 +286,83 @@ export function AnswerKeySetup({
 
     if (!confirmed) return
 
-    setQuestions((currentQuestions = []) => currentQuestions.map(clearQuestionValues))
-    setValidationErrors({})
+    const nextQuestions = questionList.map(clearQuestionValues)
+    setQuestions(nextQuestions)
+    setValidationErrors(validateAllQuestions(nextQuestions))
   }
-
-  /* ---- progress ---- */
-  const questionList = Array.isArray(questions) ? questions : []
-
-  /* ---- autosave ---- */
-  useEffect(() => {
-    onAutosaveStatus?.({ state: 'saving', savedAt: null })
-
-    const autosaveTimer = window.setTimeout(() => {
-      onSave(questionList)
-      onAutosaveStatus?.({ state: 'saved', savedAt: new Date() })
-    }, 400)
-
-    return () => window.clearTimeout(autosaveTimer)
-  }, [onSave, questionList]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const answeredCount = questionList.filter(isQuestionAnswered).length
   const errorCount = Object.keys(validationErrors).length
 
   return (
-    <div style={{
-      background: '#fff',
-      borderRadius: 'var(--radius-lg)',
-      border: '2px solid var(--color-gray-200)',
-      boxShadow: 'var(--shadow-md)',
-      display: 'flex',
-      flexDirection: 'column',
-      height: 'calc(100vh - 160px)',
-    }}>
-      {/* ---- Header ---- */}
-      <div style={{
-        padding: '18px 24px',
-        borderBottom: '2px solid var(--color-gray-200)',
-        background: 'linear-gradient(135deg, var(--color-gray-50), #fff)',
-        flexShrink: 0,
-      }}>
-        {/* Title row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-          {/* Back button */}
+    <section className="answer-panel">
+      <div className="answer-panel-header">
+        <div className="answer-panel-title-row">
           <button
             onClick={onBack}
             title="Back to quiz list"
-            style={{
-              width: 36, height: 36, borderRadius: 10,
-              border: '2px solid var(--color-gray-200)',
-              background: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18, color: 'var(--color-gray-600)',
-              flexShrink: 0,
-            }}
+            className="soft-button"
+            style={{ padding: 0, width: 42, height: 42, flexShrink: 0 }}
           >←</button>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ fontWeight: 800, fontSize: 18, color: 'var(--color-gray-900)', lineHeight: 1.2 }}>
-              Answer Key Setup
-            </h2>
-            <p style={{ fontSize: 13, color: 'var(--color-gray-500)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {quiz.name}
-            </p>
+          <div className="answer-panel-title">
+            <h2>Answer Key Setup</h2>
+            <p>{quiz.name}</p>
           </div>
 
-          {/* Bulk Import */}
-          <button
-            onClick={onBulkImport}
-            style={{
-              padding: '8px 14px', border: '2px solid var(--color-gray-200)',
-              background: '#fff', borderRadius: 10, cursor: 'pointer',
-              fontWeight: 600, fontSize: 12, color: 'var(--color-gray-700)',
-              display: 'flex', alignItems: 'center', gap: 6,
-              transition: 'all 0.15s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.color = 'var(--color-primary)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--color-gray-200)'; e.currentTarget.style.color = 'var(--color-gray-700)' }}
-          >
-            <Upload size={14} /> Bulk Import
-          </button>
+          <div className="answer-panel-actions">
+            <button
+              onClick={onBulkImport}
+              className="soft-button"
+              data-tour="bulk-import"
+            >
+              <Upload size={14} /> Bulk Import
+            </button>
 
-          <button
-            onClick={handleClearAll}
-            disabled={answeredCount === 0}
-            style={{
-              padding: '8px 14px',
-              border: '2px solid #fecaca',
-              background: '#fff5f5',
-              borderRadius: 10,
-              cursor: answeredCount === 0 ? 'not-allowed' : 'pointer',
-              fontWeight: 600,
-              fontSize: 12,
-              color: '#dc2626',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              transition: 'all 0.15s',
-              opacity: answeredCount === 0 ? 0.5 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (answeredCount > 0) {
-                e.currentTarget.style.background = '#fee2e2'
-                e.currentTarget.style.borderColor = '#fca5a5'
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#fff5f5'
-              e.currentTarget.style.borderColor = '#fecaca'
-            }}
-          >
-            <Trash2 size={14} /> Clear All
-          </button>
+            <button
+              onClick={handleClearAll}
+              disabled={answeredCount === 0}
+              className="danger-button"
+            >
+              <Trash2 size={14} /> Clear All
+            </button>
 
-          {/* Save — fixed width, no shrink */}
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            style={{
-              padding: '9px 20px',
-              border: 'none',
-              background: 'var(--color-primary)',
-              color: '#fff',
-              borderRadius: 10,
-              cursor: isSaving ? 'not-allowed' : 'pointer',
-              fontWeight: 700,
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              transition: 'background 0.25s',
-              boxShadow: '0 4px 12px rgba(37,99,235,0.3)',
-              minWidth: 160,
-              minHeight: 40,
-            }}
-          >
-            {isSaving ? (
-              <>
-                <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save size={15} />
-                Save Answer Key
-              </>
-            )}
-          </button>
+            <button
+              onClick={handleSave}
+              className="primary-button save-button"
+              data-tour="save-answer-key"
+              disabled={isManualSaving}
+            >
+              {isManualSaving ? <LoaderCircle size={15} className="spin-icon" /> : <Save size={15} />}
+              Save Answer Key
+            </button>
+          </div>
         </div>
 
-        {/* Spinner keyframe */}
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-
-        {/* Progress bar */}
         <ProgressBar
           value={answeredCount}
           max={questionList.length}
           label={`Progress: ${answeredCount} of ${questionList.length} questions`}
         />
 
-        {/* Validation summary */}
+        {questionList.some((question) => question.type === 'Numeric') && (
+          <label className="numeric-toggle-row numeric-toggle-global">
+            <input
+              type="checkbox"
+              checked={numericSuggestionsEnabled}
+              onChange={(event) => setNumericSuggestionsEnabled(event.target.checked)}
+            />
+            <span>Auto suggestions for all numeric inputs</span>
+          </label>
+        )}
+
         {errorCount > 0 && (
           <div style={{
             marginTop: 12,
             padding: '10px 14px',
             background: 'var(--color-red-light)',
-            border: '2px solid #fca5a5',
-            borderRadius: 10,
+            border: '1px solid #fca5a5',
+            borderRadius: 14,
             display: 'flex',
             gap: 10,
             alignItems: 'flex-start',
@@ -381,23 +380,46 @@ export function AnswerKeySetup({
         )}
       </div>
 
-      {/* ---- Questions list ---- */}
-      <div ref={bodyRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="answer-panel-body" data-tour="answer-input-section">
         {questionList.map((question) => (
           <QuestionRow
             key={question.questionNumber}
             question={question}
             validationError={validationErrors[question.questionNumber]}
-            onAnswerChange={(val) =>
+            enableDragDrop={enableDragDrop}
+            isHighlighted={highlightedQuestion === question.questionNumber}
+            rowRef={(node) => {
+              if (node) questionRefs.current.set(question.questionNumber, node)
+              else questionRefs.current.delete(question.questionNumber)
+            }}
+            inputRef={(node) => {
+              if (node) inputRefs.current.set(question.questionNumber, node)
+              else inputRefs.current.delete(question.questionNumber)
+            }}
+            suggestionsEnabled={numericSuggestionsEnabled}
+            onPointsChange={(points) =>
+              updateQuestion(question.questionNumber, { points })
+            }
+            onAnswerChange={(value) =>
               updateQuestion(question.questionNumber, {
-                answer: val,
-                tag: question.type === 'MCQ' ? findTagForOption(val) : question.tag,
+                answer: value,
+                tag: question.type === 'MCQ' ? findTagForOption(value) : question.tag,
               })
             }
-            onAnswersChange={(ans) => updateQuestion(question.questionNumber, { answers: ans })}
+            onAnswersChange={(answers) =>
+              updateQuestion(question.questionNumber, { answers })
+            }
+            onRemoveTag={() =>
+              updateQuestion(question.questionNumber, { tag: undefined, answer: '' })
+            }
           />
         ))}
       </div>
-    </div>
+
+      <div className="answer-panel-footer">
+        <span>↵ <strong>Enter</strong> Add numeric values</span>
+        <span>Use commas to add multiple numeric values at once</span>
+      </div>
+    </section>
   )
 }

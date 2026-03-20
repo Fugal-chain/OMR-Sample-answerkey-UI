@@ -1,10 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { BOT_RESPONSES, QUICK_ACTIONS } from '../../data/quizzes.js'
 
-/**
- * Picks the right canned response from the BOT_RESPONSES map.
- */
 function getBotResponse(userText) {
   const t = userText.toLowerCase()
   if (t.includes('bulk') || t.includes('import')) return BOT_RESPONSES.bulk
@@ -16,11 +12,21 @@ function getBotResponse(userText) {
   return BOT_RESPONSES.default
 }
 
+function handleComposerEnter(event, submit) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    submit()
+  }
+}
+
 /**
- * AIChatbot — assistant panel.
- * Can be collapsed when embedded in the sidebar.
+ * AIChatbot — embedded assistant panel.
+ * Desktop: fills the left sidebar area.
+ * Mobile: renders as a collapsible panel at the top.
  */
-export function AIChatbot({ collapsible = false, defaultCollapsed = false }) {
+export function AIChatbot({ variant = 'desktop' }) {
+  const isMobile = variant === 'mobile'
+  const [isOpen, setIsOpen] = useState(!isMobile)
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -30,12 +36,15 @@ export function AIChatbot({ collapsible = false, defaultCollapsed = false }) {
   ])
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
-  const [collapsed, setCollapsed] = useState(defaultCollapsed)
   const bottomRef = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
+
+  useEffect(() => {
+    setIsOpen(!isMobile)
+  }, [isMobile])
 
   const sendMessage = (text) => {
     if (!text.trim()) return
@@ -44,7 +53,7 @@ export function AIChatbot({ collapsible = false, defaultCollapsed = false }) {
     setInputValue('')
     setIsTyping(true)
 
-    setTimeout(() => {
+    window.setTimeout(() => {
       setIsTyping(false)
       setMessages((prev) => [
         ...prev,
@@ -53,158 +62,63 @@ export function AIChatbot({ collapsible = false, defaultCollapsed = false }) {
     }, 650)
   }
 
-  const headerContent = (
-    <div
-      onClick={collapsible ? () => setCollapsed(!collapsed) : undefined}
-      style={{
-        padding: '14px 16px',
-        borderBottom: collapsed ? 'none' : '1px solid var(--color-gray-200)',
-        background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)',
-        flexShrink: 0,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        cursor: collapsible ? 'pointer' : 'default',
-        borderRadius: collapsed ? 'var(--radius-lg)' : undefined,
-      }}
-    >
-      <div style={{
-        width: 36, height: 36,
-        background: 'var(--color-green)',
-        borderRadius: 'var(--radius-md)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18, flexShrink: 0,
-      }}>🤖</div>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--color-gray-900)' }}>AI Assistant</div>
-        <div style={{ fontSize: 10, color: 'var(--color-green)', display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 6, height: 6, background: 'var(--color-green)', borderRadius: '50%', display: 'inline-block' }} />
-          Online
+  return (
+    <section className={isMobile ? 'chatbot-mobile-panel' : 'sidebar-panel chatbot-panel'}>
+      <button
+        type="button"
+        className={`chatbot-header${isMobile ? ' is-collapsible' : ''}`}
+        onClick={isMobile ? () => setIsOpen((prev) => !prev) : undefined}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="chatbot-avatar">🤖</div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-gray-900)' }}>AI Assistant</div>
+            <div style={{ fontSize: 11, color: 'var(--color-green)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 6, height: 6, background: 'var(--color-green)', borderRadius: '50%', display: 'inline-block' }} />
+              Ready to help
+            </div>
+          </div>
         </div>
-      </div>
-      {collapsible && (
-        <div style={{ color: 'var(--color-gray-500)' }}>
-          {collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+        {isMobile && <span className="chatbot-toggle">{isOpen ? '−' : '+'}</span>}
+      </button>
+
+      {isOpen && (
+        <div className={`chatbot-body${isMobile ? ' is-mobile' : ''}`}>
+          <div className="chatbot-messages">
+            {messages.map((msg) => (
+              <ChatBubble key={msg.id} message={msg} />
+            ))}
+            {isTyping && <TypingIndicator />}
+            <div ref={bottomRef} />
+          </div>
+
+          <div className="chatbot-quick-actions">
+            {QUICK_ACTIONS.map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                onClick={() => sendMessage(action.label)}
+                className="chatbot-quick-chip"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="chatbot-input-row">
+            <input
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => handleComposerEnter(e, () => sendMessage(inputValue))}
+              placeholder="Ask a question and press Enter..."
+              className="chatbot-input"
+            />
+          </div>
         </div>
       )}
-    </div>
-  )
-
-  if (collapsed) {
-    return (
-      <div style={{
-        background: '#fff',
-        borderRadius: 'var(--radius-lg)',
-        border: '1px solid var(--color-gray-200)',
-        boxShadow: 'var(--shadow-sm)',
-        overflow: 'hidden',
-      }}>
-        {headerContent}
-      </div>
-    )
-  }
-
-  return (
-    <div style={{
-      background: '#fff',
-      borderRadius: 'var(--radius-lg)',
-      border: '1px solid var(--color-gray-200)',
-      boxShadow: 'var(--shadow-sm)',
-      display: 'flex',
-      flexDirection: 'column',
-      maxHeight: 420,
-      overflow: 'hidden',
-    }}>
-      {/* Header */}
-      {headerContent}
-
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {messages.map((msg) => (
-          <ChatBubble key={msg.id} message={msg} />
-        ))}
-        {isTyping && <TypingIndicator />}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Quick actions */}
-      <div style={{ padding: '10px 14px', borderTop: '1px solid var(--color-gray-200)', display: 'flex', flexWrap: 'wrap', gap: 6, flexShrink: 0 }}>
-        {QUICK_ACTIONS.map((action) => (
-          <button
-            key={action.key}
-            onClick={() => sendMessage(action.label)}
-            style={{
-              padding: '6px 12px',
-              borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--color-gray-200)',
-              background: 'var(--color-gray-50)',
-              fontSize: 11,
-              cursor: 'pointer',
-              color: 'var(--color-gray-700)',
-              transition: 'all 0.12s',
-              fontFamily: 'inherit',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#93c5fd' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-gray-50)'; e.currentTarget.style.borderColor = 'var(--color-gray-200)' }}
-          >
-            {action.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Input */}
-      <div style={{ padding: '12px 14px', borderTop: '1px solid var(--color-gray-200)', display: 'flex', gap: 8, flexShrink: 0, background: 'var(--color-gray-50)' }}>
-        <input
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage(inputValue)}
-          placeholder="Ask a question…"
-          style={{
-            flex: 1,
-            padding: '10px 14px',
-            border: '1px solid var(--color-gray-200)',
-            borderRadius: 'var(--radius-md)',
-            fontSize: 13,
-            outline: 'none',
-            transition: 'all 0.15s',
-            background: '#fff',
-            color: 'var(--color-gray-900)',
-            minHeight: 40,
-          }}
-          onFocus={(e) => { e.currentTarget.style.borderColor = '#86efac'; e.currentTarget.style.boxShadow = '0 0 0 3px #f0fdf4' }}
-          onBlur={(e) => { e.currentTarget.style.borderColor = 'var(--color-gray-200)'; e.currentTarget.style.boxShadow = 'none' }}
-        />
-        <button
-          onClick={() => sendMessage(inputValue)}
-          style={{
-            padding: '10px 14px',
-            background: 'var(--color-green)',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 'var(--radius-md)',
-            cursor: 'pointer',
-            fontWeight: 700,
-            fontSize: 16,
-            boxShadow: '0 2px 8px rgba(22,163,74,0.25)',
-            transition: 'all 0.15s',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minWidth: 44,
-            minHeight: 44,
-            flexShrink: 0,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = '#15803d'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(22,163,74,0.35)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--color-green)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(22,163,74,0.25)' }}
-        >
-          ➤
-        </button>
-      </div>
-    </div>
+    </section>
   )
 }
-
-/* ---- sub-components ---- */
 
 function ChatBubble({ message }) {
   const isUser = message.role === 'user'

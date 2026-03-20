@@ -21,6 +21,75 @@ export function isValidNumeric(value) {
   return !isNaN(parseFloat(value)) && isFinite(value)
 }
 
+export function parseNumericValues(value) {
+  return String(value ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+export function validateNumericAnswers(answers = []) {
+  if (!Array.isArray(answers) || answers.length === 0) {
+    return 'At least one numeric answer is required'
+  }
+
+  const seenValues = new Set()
+
+  for (const answer of answers) {
+    const trimmedAnswer = String(answer ?? '').trim()
+
+    if (!isValidNumeric(trimmedAnswer)) {
+      return 'Enter a valid number (e.g. 42 or 3.14)'
+    }
+
+    if (seenValues.has(trimmedAnswer)) {
+      return 'Duplicate values are not allowed'
+    }
+
+    seenValues.add(trimmedAnswer)
+  }
+
+  return null
+}
+
+export function validateNumericInputValue(value, answers = []) {
+  const parsedValues = parseNumericValues(value)
+  if (!parsedValues.length) return null
+
+  const existingValues = new Set(
+    answers.map((answer) => String(answer ?? '').trim()).filter(Boolean)
+  )
+  const pendingValues = new Set()
+
+  for (const answer of parsedValues) {
+    const trimmedAnswer = String(answer ?? '').trim()
+
+    if (!isValidNumeric(trimmedAnswer)) {
+      return 'Enter a valid number (e.g. 42 or 3.14)'
+    }
+
+    if (existingValues.has(trimmedAnswer) || pendingValues.has(trimmedAnswer)) {
+      return 'Duplicate values are not allowed'
+    }
+
+    pendingValues.add(trimmedAnswer)
+  }
+
+  return null
+}
+
+export function validateQuestion(question) {
+  if (question.type === 'MCQ') {
+    return validateMCQAnswer(question.answer)
+  }
+
+  if (question.type === 'Numeric') {
+    return validateNumericAnswers(question.answers)
+  }
+
+  return null
+}
+
 /**
  * Validates all questions and returns an error map.
  * @param {Array} questions
@@ -30,14 +99,8 @@ export function validateAllQuestions(questions) {
   const errors = {}
 
   questions.forEach((q) => {
-    if (q.type === 'MCQ') {
-      const err = validateMCQAnswer(q.answer)
-      if (err) errors[q.questionNumber] = err
-    } else if (q.type === 'Numeric') {
-      if (!q.answers || q.answers.length === 0) {
-        errors[q.questionNumber] = 'At least one numeric answer is required'
-      }
-    }
+    const err = validateQuestion(q)
+    if (err) errors[q.questionNumber] = err
   })
 
   return errors
@@ -115,42 +178,4 @@ export function parseBulkImport(text, config) {
   } catch (e) {
     return { data: [], error: e.message || 'Invalid format.' }
   }
-}
-
-/**
- * Checks whether a numeric value already exists in the answers list.
- * Comparison is string-based after trimming.
- * @param {string[]} answers
- * @param {string} newValue
- * @returns {boolean}
- */
-export function hasDuplicateNumeric(answers, newValue) {
-  const trimmed = String(newValue).trim()
-  return answers.some((a) => String(a).trim() === trimmed)
-}
-
-/**
- * Generates zero-padded suggestions for a numeric string.
- * E.g. "2" → ["02", "002", "0002"]
- * Filters out the original value and any that already exist in `existingAnswers`.
- * @param {string} value
- * @param {string[]} existingAnswers
- * @param {number} maxDigits
- * @returns {string[]}
- */
-export function generatePaddedSuggestions(value, existingAnswers = [], maxDigits = 4) {
-  const trimmed = String(value).trim()
-  if (!trimmed || !isValidNumeric(trimmed)) return []
-
-  // Only generate for integer-like values without leading zeros
-  if (trimmed.includes('.') || trimmed.startsWith('-') || trimmed.startsWith('0')) return []
-
-  const suggestions = []
-  for (let digits = 2; digits <= maxDigits; digits++) {
-    const padded = trimmed.padStart(digits, '0')
-    if (padded !== trimmed && !existingAnswers.includes(padded)) {
-      suggestions.push(padded)
-    }
-  }
-  return suggestions
 }

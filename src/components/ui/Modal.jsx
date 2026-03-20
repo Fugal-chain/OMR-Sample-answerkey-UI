@@ -3,7 +3,16 @@ import { useEffect } from 'react'
 /**
  * Reusable modal overlay with backdrop.
  */
-export function Modal({ isOpen, onClose, title, subtitle, icon, children, maxWidth = 560 }) {
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  subtitle,
+  icon,
+  children,
+  maxWidth = 560,
+  allowBackgroundScroll = false,
+}) {
   useEffect(() => {
     if (!isOpen) return
     const handleKey = (e) => { if (e.key === 'Escape') onClose() }
@@ -15,19 +24,30 @@ export function Modal({ isOpen, onClose, title, subtitle, icon, children, maxWid
 
   return (
     <div
-      onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        position: 'fixed', inset: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 1000, padding: '0 20px',
+        pointerEvents: allowBackgroundScroll ? 'none' : 'auto',
       }}
+      onClick={allowBackgroundScroll ? undefined : onClose}
     >
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(0,0,0,0.5)',
+        }}
+      />
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
+          position: 'relative',
           background: '#fff', borderRadius: 20, boxShadow: '0 25px 60px rgba(0,0,0,0.25)',
           width: '100%', maxWidth, overflow: 'hidden',
           animation: 'modalIn 0.2s ease',
+          pointerEvents: 'auto',
         }}
       >
         <style>{`@keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(-10px); } to { opacity: 1; transform: scale(1) translateY(0); } }`}</style>

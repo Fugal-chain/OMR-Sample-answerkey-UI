@@ -3,6 +3,8 @@ import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { Toaster } from 'react-hot-toast'
 import { getQuizDefinitions } from './api/omrSheetsApi.js'
 import { AnswerKeyProvider, useAnswerKey } from './context/AnswerKeyContext.jsx'
+import { useMediaQuery } from './hooks/useMediaQuery.js'
+import { useOmrTour } from './hooks/useOmrTour.js'
 import { TopBar } from './components/TopBar/index.js'
 import { QuizSelector } from './components/QuizSelector/index.js'
 import { TagSidebar } from './components/TagSidebar/index.js'
@@ -18,24 +20,16 @@ function AppContent() {
   const { saveAnswers, getAnswers, savedAnswers } = useAnswerKey()
   const [selectedQuiz, setSelectedQuiz] = useState(null)
   const [inSetupMode, setInSetupMode] = useState(false)
+  const [editorControls, setEditorControls] = useState(null)
+  const [saveStatus, setSaveStatus] = useState({ state: 'idle', savedAt: null })
   const [bulkOpen, setBulkOpen] = useState(false)
   const [activeTag, setActiveTag] = useState(null)
   const [bulkImportPayload, setBulkImportPayload] = useState(null)
   const [quizzes, setQuizzes] = useState([])
   const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(true)
   const [quizLoadError, setQuizLoadError] = useState('')
-
-  /* ---- lifted undo/redo for TopBar ---- */
-  const [undoRedoFns, setUndoRedoFns] = useState(null)
-  const handleUndoRedoReady = useCallback((fns) => {
-    setUndoRedoFns(fns)
-  }, [])
-
-  /* ---- autosave status for TopBar ---- */
-  const [autosaveStatus, setAutosaveStatus] = useState({ state: 'idle', savedAt: null })
-  const handleAutosaveStatus = useCallback((status) => {
-    setAutosaveStatus(status)
-  }, [])
+  const isTabletOrBelow = useMediaQuery('(max-width: 768px)')
+  const { startTour } = useOmrTour(inSetupMode)
 
   useEffect(() => {
     let isMounted = true
@@ -65,20 +59,25 @@ function AppContent() {
   const handleSelectQuiz = (quiz) => {
     setSelectedQuiz(quiz)
     setInSetupMode(true)
-    setUndoRedoFns(null)
-    setAutosaveStatus({ state: 'idle', savedAt: null })
+    setSaveStatus({ state: 'idle', savedAt: null })
   }
 
   const handleBack = () => {
     setSelectedQuiz(null)
     setInSetupMode(false)
-    setUndoRedoFns(null)
-    setAutosaveStatus({ state: 'idle', savedAt: null })
+    setEditorControls(null)
+    setSaveStatus({ state: 'idle', savedAt: null })
   }
 
-  const handleSave = (answers) => {
+  const handleSave = useCallback((answers) => {
+    if (!selectedQuiz?.id) return
+
     saveAnswers(selectedQuiz.id, answers)
-  }
+    setSaveStatus({
+      state: 'saved',
+      savedAt: Date.now(),
+    })
+  }, [saveAnswers, selectedQuiz?.id])
 
   const savedAnswerKey = selectedQuiz ? getAnswers(selectedQuiz.id) : null
 
@@ -101,19 +100,16 @@ function AppContent() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+    <div className="app-shell">
       <Toaster position="top-right" toastOptions={{ duration: 2600 }} />
-      {/* Sticky top navigation bar */}
       <TopBar
         selectedQuiz={inSetupMode ? selectedQuiz : null}
-        undoRedoFns={inSetupMode ? undoRedoFns : null}
-        autosaveStatus={inSetupMode ? autosaveStatus : null}
+        saveStatus={inSetupMode ? saveStatus : null}
+        editorControls={inSetupMode ? editorControls : null}
       />
 
-      {/* Page content */}
-      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '28px 28px' }}>
+      <main className="app-main">
         {!inSetupMode ? (
-          /* ── Step 1: Quiz selection ── */
           <div style={{ maxWidth: 700, margin: '0 auto' }}>
             <div style={{ marginBottom: 24 }}>
               <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--color-gray-900)' }}>
@@ -134,30 +130,25 @@ function AppContent() {
             />
           </div>
         ) : (
-          /* ── Step 2: 2-column answer-key layout ── */
           <DndContext
-            onDragStart={handleDragStart}
-            onDragEnd={clearDragState}
-            onDragCancel={clearDragState}
+            onDragStart={isTabletOrBelow ? undefined : handleDragStart}
+            onDragEnd={isTabletOrBelow ? undefined : clearDragState}
+            onDragCancel={isTabletOrBelow ? undefined : clearDragState}
           >
-            {/* Mobile chatbot — collapsible at top */}
-            <div className="mobile-chatbot-container">
-              <AIChatbot collapsible defaultCollapsed />
-            </div>
+            <div className="setup-layout">
+              {!isTabletOrBelow && (
+                <div className="setup-sidebar-stack">
+                  <div className="fixed-drag-panel">
+                    <TagSidebar />
+                  </div>
+                  <div className="fixed-chatbot-panel">
+                    <AIChatbot variant="desktop" />
+                  </div>
+                </div>
+              )}
 
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '280px 1fr',
-              gap: 20,
-              alignItems: 'start',
-            }} className="setup-grid">
-              {/* Left — Answer-option drag tags + Chatbot */}
-              <div className="sidebar-column">
-                <TagSidebar />
-              </div>
-
-              {/* Centre — Answer key editor */}
-              <div>
+              <div className="setup-main-column">
+                {isTabletOrBelow && <AIChatbot variant="mobile" />}
                 <AnswerKeySetup
                   quiz={selectedQuiz}
                   savedQuestions={savedAnswerKey}
@@ -166,19 +157,20 @@ function AppContent() {
                   onBack={handleBack}
                   onSave={handleSave}
                   onBulkImport={() => setBulkOpen(true)}
-                  onUndoRedoReady={handleUndoRedoReady}
-                  onAutosaveStatus={handleAutosaveStatus}
+                  onStartTour={startTour}
+                  onSaveStatusChange={setSaveStatus}
+                  onRegisterNavbarActions={setEditorControls}
+                  enableDragDrop={!isTabletOrBelow}
                 />
               </div>
             </div>
             <DragOverlay>
-              {activeTag ? <AnswerTagCard tag={activeTag} isDragging /> : null}
+              {!isTabletOrBelow && activeTag ? <AnswerTagCard tag={activeTag} isDragging /> : null}
             </DragOverlay>
           </DndContext>
         )}
       </main>
 
-      {/* Bulk-import modal */}
       <BulkImportDialog
         isOpen={bulkOpen}
         onClose={() => setBulkOpen(false)}
