@@ -116,3 +116,41 @@ export function parseBulkImport(text, config) {
     return { data: [], error: e.message || 'Invalid format.' }
   }
 }
+
+/**
+ * Checks whether a numeric value already exists in the answers list.
+ * Comparison is string-based after trimming.
+ * @param {string[]} answers
+ * @param {string} newValue
+ * @returns {boolean}
+ */
+export function hasDuplicateNumeric(answers, newValue) {
+  const trimmed = String(newValue).trim()
+  return answers.some((a) => String(a).trim() === trimmed)
+}
+
+/**
+ * Generates zero-padded suggestions for a numeric string.
+ * E.g. "2" → ["02", "002", "0002"]
+ * Filters out the original value and any that already exist in `existingAnswers`.
+ * @param {string} value
+ * @param {string[]} existingAnswers
+ * @param {number} maxDigits
+ * @returns {string[]}
+ */
+export function generatePaddedSuggestions(value, existingAnswers = [], maxDigits = 4) {
+  const trimmed = String(value).trim()
+  if (!trimmed || !isValidNumeric(trimmed)) return []
+
+  // Only generate for integer-like values without leading zeros
+  if (trimmed.includes('.') || trimmed.startsWith('-') || trimmed.startsWith('0')) return []
+
+  const suggestions = []
+  for (let digits = 2; digits <= maxDigits; digits++) {
+    const padded = trimmed.padStart(digits, '0')
+    if (padded !== trimmed && !existingAnswers.includes(padded)) {
+      suggestions.push(padded)
+    }
+  }
+  return suggestions
+}

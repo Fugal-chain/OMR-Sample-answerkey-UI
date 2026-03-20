@@ -374,60 +374,18 @@ input, textarea {
   color: var(--color-gray-400);
 }
 
-.fab-chatbot {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 120;
+/* Mobile chatbot at top — hidden on desktop, shown on mobile */
+.mobile-chatbot-container {
+  display: none;
+  margin-bottom: 16px;
 }
 
-.fab-chatbot-button {
-  width: 58px;
-  height: 58px;
-  border-radius: 18px;
-  border: none;
-  background: linear-gradient(135deg, #16a34a, #15803d);
-  color: #fff;
-  box-shadow: 0 22px 30px rgba(22, 163, 74, 0.26);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-}
-
-.chatbot-sheet {
-  position: fixed;
-  right: 20px;
-  bottom: 92px;
-  width: min(380px, calc(100vw - 24px));
-  height: min(620px, calc(100vh - 120px));
-  background: rgba(255, 255, 255, 0.98);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 24px;
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  z-index: 130;
-  transform-origin: bottom right;
-  animation: chatbotIn 0.2s ease;
-}
-
-.chatbot-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 125;
-  background: rgba(15, 23, 42, 0.18);
-  backdrop-filter: blur(3px);
-}
-
-@keyframes chatbotIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.97);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+/* Setup grid — 2 column layout */
+.setup-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
 }
 
 .tour-button {
@@ -454,8 +412,8 @@ input, textarea {
     padding: 20px;
   }
 
-  .setup-layout {
-    grid-template-columns: minmax(170px, 210px) minmax(0, 1.15fr);
+  .setup-grid {
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
     gap: 14px;
   }
 
@@ -464,7 +422,7 @@ input, textarea {
   }
 
   .question-row-inner {
-    grid-template-columns: 68px minmax(0, 1fr) 92px 24px;
+    grid-template-columns: 68px minmax(0, 1fr);
   }
 }
 
@@ -473,7 +431,17 @@ input, textarea {
     padding: 16px;
   }
 
-  .setup-layout {
+  /* Show mobile chatbot at top */
+  .mobile-chatbot-container {
+    display: block;
+  }
+
+  /* Hide sidebar with drag tags on mobile */
+  .sidebar-column {
+    display: none;
+  }
+
+  .setup-grid {
     grid-template-columns: 1fr;
   }
 
@@ -516,12 +484,9 @@ input, textarea {
     margin-left: 0;
   }
 
-  .chatbot-sheet {
-    right: 12px;
-    left: 12px;
-    width: auto;
-    bottom: 88px;
-    height: min(72vh, 620px);
+  /* Touch-friendly inputs */
+  input, button {
+    min-height: 44px;
   }
 }
 
@@ -557,7 +522,7 @@ input, textarea {
   .primary-button,
   .danger-button {
     flex: 1 1 auto;
-    min-height: 42px;
+    min-height: 44px;
   }
 
   .option-grid {
@@ -579,11 +544,6 @@ input, textarea {
 
   .numeric-entry-row {
     grid-template-columns: 1fr;
-  }
-
-  .fab-chatbot {
-    right: 14px;
-    bottom: 14px;
   }
 }
 
