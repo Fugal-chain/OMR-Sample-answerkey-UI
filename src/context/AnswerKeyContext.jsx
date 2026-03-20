@@ -3,10 +3,36 @@ import { createContext, useContext, useEffect, useState } from 'react'
 const AnswerKeyContext = createContext(null)
 const STORAGE_KEY = 'omr-exam-dashboard-answer-keys'
 
+function normalizeSavedRecord(examId, value) {
+  if (Array.isArray(value)) {
+    return {
+      examId,
+      questions: value,
+    }
+  }
+
+  if (value && typeof value === 'object' && Array.isArray(value.questions)) {
+    return {
+      examId: value.examId ?? examId,
+      questions: value.questions,
+    }
+  }
+
+  return {
+    examId,
+    questions: [],
+  }
+}
+
 function loadSavedAnswers() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : {}
+    if (!raw) return {}
+
+    const parsed = JSON.parse(raw)
+    return Object.fromEntries(
+      Object.entries(parsed).map(([examId, value]) => [examId, normalizeSavedRecord(examId, value)])
+    )
   } catch {
     return {}
   }
@@ -22,11 +48,17 @@ export function AnswerKeyProvider({ children }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedAnswers))
   }, [savedAnswers])
 
-  const saveAnswers = (quizId, answers) => {
-    setSavedAnswers((prev) => ({ ...prev, [quizId]: answers }))
+  const saveAnswers = (examId, questions) => {
+    setSavedAnswers((prev) => ({
+      ...prev,
+      [examId]: {
+        examId,
+        questions,
+      },
+    }))
   }
 
-  const getAnswers = (quizId) => savedAnswers[quizId] || null
+  const getAnswers = (examId) => savedAnswers[examId]?.questions || null
 
   return (
     <AnswerKeyContext.Provider value={{ savedAnswers, saveAnswers, getAnswers }}>

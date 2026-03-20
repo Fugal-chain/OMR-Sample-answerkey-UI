@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useDndMonitor } from '@dnd-kit/core'
-import { Undo2, Redo2, Upload, Save, Trash2 } from 'lucide-react'
+import { Undo2, Redo2, Upload, Save, Trash2, CircleHelp } from 'lucide-react'
 import { useAnswerKeyHistory } from '../../hooks/useAnswerKeyHistory.js'
 import { ANSWER_TAGS } from '../../data/quizzes.js'
 import { validateAllQuestions } from '../../utils/validation.js'
@@ -22,11 +22,16 @@ function buildInitialQuestions(omrConfiguration, savedQuestions = []) {
     const savedQuestion = savedByQuestionNumber.get(omrQ.questionNumber)
     const savedAnswer = savedQuestion?.answer || ''
     const savedTag = savedQuestion?.tag || findTagForOption(savedAnswer)
+    const totalBubbles =
+      omrQ.type === 'Numeric'
+        ? savedQuestion?.totalBubbles ?? omrQ.totalBubbles ?? 4
+        : undefined
 
     return {
       questionNumber: omrQ.questionNumber,
       type: omrQ.type,
       answer: omrQ.type === 'MCQ' ? savedAnswer : '',
+      totalBubbles,
       answers:
         omrQ.type === 'Numeric' && Array.isArray(savedQuestion?.answers)
           ? savedQuestion.answers
@@ -73,11 +78,16 @@ export function AnswerKeySetup({
   onBack,
   onSave,
   onBulkImport,
+  onStartTour,
+  enableDragDrop = true,
 }) {
-  const initialQuestions = useMemo(
-    () => buildInitialQuestions(quiz.omrConfiguration, savedQuestions),
-    [quiz.omrConfiguration, savedQuestions]
+  const [historySeed, setHistorySeed] = useState(() =>
+    buildInitialQuestions(quiz.omrConfiguration, savedQuestions)
   )
+
+  useEffect(() => {
+    setHistorySeed(buildInitialQuestions(quiz.omrConfiguration, savedQuestions))
+  }, [quiz.id])
 
   const {
     questions,
@@ -86,7 +96,7 @@ export function AnswerKeySetup({
     redo,
     canUndo,
     canRedo,
-  } = useAnswerKeyHistory(initialQuestions)
+  } = useAnswerKeyHistory(historySeed)
 
   const [validationErrors, setValidationErrors] = useState({})
   const [saveSuccess, setSaveSuccess] = useState(false)
@@ -134,6 +144,8 @@ export function AnswerKeySetup({
 
   useDndMonitor({
     onDragEnd(event) {
+      if (!enableDragDrop) return
+
       const tag = event.active?.data?.current?.tag
       const overData = event.over?.data?.current
 
@@ -191,69 +203,35 @@ export function AnswerKeySetup({
   const errorCount = Object.keys(validationErrors).length
 
   return (
-    <div style={{
-      background: '#fff',
-      borderRadius: 'var(--radius-lg)',
-      border: '2px solid var(--color-gray-200)',
-      boxShadow: 'var(--shadow-md)',
-      display: 'flex',
-      flexDirection: 'column',
-      height: 'calc(100vh - 160px)',
-    }}>
-      {/* ---- Header ---- */}
-      <div style={{
-        padding: '18px 24px',
-        borderBottom: '2px solid var(--color-gray-200)',
-        background: 'linear-gradient(135deg, var(--color-gray-50), #fff)',
-        flexShrink: 0,
-      }}>
-        {/* Title row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          {/* Back button */}
+    <section className="answer-panel">
+      <div className="answer-panel-header">
+        <div className="answer-panel-title-row">
           <button
             onClick={onBack}
             title="Back to quiz list"
-            style={{
-              width: 36, height: 36, borderRadius: 10,
-              border: '2px solid var(--color-gray-200)',
-              background: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18, color: 'var(--color-gray-600)',
-              flexShrink: 0,
-            }}
+            className="soft-button"
+            style={{ padding: 0, width: 42, height: 42, flexShrink: 0 }}
           >←</button>
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ fontWeight: 800, fontSize: 18, color: 'var(--color-gray-900)', lineHeight: 1.2 }}>
-              Answer Key Setup
-            </h2>
-            <p style={{ fontSize: 13, color: 'var(--color-gray-500)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {quiz.name}
-            </p>
+          <div className="answer-panel-title">
+            <h2>Answer Key Setup</h2>
+            <p>{quiz.name}</p>
           </div>
 
-          {/* Undo / Redo */}
-          <div style={{ display: 'flex', gap: 4, paddingRight: 12, borderRight: '2px solid var(--color-gray-200)' }}>
+          <div className="answer-panel-actions">
+            <div className="action-group">
             <IconButton onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
               <Undo2 size={16} />
             </IconButton>
             <IconButton onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)">
               <Redo2 size={16} />
             </IconButton>
-          </div>
+            </div>
 
-          {/* Bulk Import */}
           <button
             onClick={onBulkImport}
-            style={{
-              padding: '8px 14px', border: '2px solid var(--color-gray-200)',
-              background: '#fff', borderRadius: 10, cursor: 'pointer',
-              fontWeight: 600, fontSize: 12, color: 'var(--color-gray-700)',
-              display: 'flex', alignItems: 'center', gap: 6,
-              transition: 'all 0.15s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.color = 'var(--color-primary)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--color-gray-200)'; e.currentTarget.style.color = 'var(--color-gray-700)' }}
+            className="soft-button"
+            data-tour="bulk-import"
           >
             <Upload size={14} /> Bulk Import
           </button>
@@ -261,74 +239,43 @@ export function AnswerKeySetup({
           <button
             onClick={handleClearAll}
             disabled={answeredCount === 0}
-            style={{
-              padding: '8px 14px',
-              border: '2px solid #fecaca',
-              background: '#fff5f5',
-              borderRadius: 10,
-              cursor: answeredCount === 0 ? 'not-allowed' : 'pointer',
-              fontWeight: 600,
-              fontSize: 12,
-              color: '#dc2626',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              transition: 'all 0.15s',
-              opacity: answeredCount === 0 ? 0.5 : 1,
-            }}
-            onMouseEnter={(e) => {
-              if (answeredCount > 0) {
-                e.currentTarget.style.background = '#fee2e2'
-                e.currentTarget.style.borderColor = '#fca5a5'
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = '#fff5f5'
-              e.currentTarget.style.borderColor = '#fecaca'
-            }}
+            className="danger-button"
           >
             <Trash2 size={14} /> Clear All
           </button>
 
-          {/* Save */}
+          <button
+            onClick={onStartTour}
+            className="soft-button tour-button"
+          >
+            <CircleHelp size={15} /> Help / Tour
+          </button>
+
           <button
             onClick={handleSave}
-            style={{
-              padding: '9px 20px',
-              border: 'none',
-              background: saveSuccess ? 'var(--color-green)' : 'var(--color-primary)',
-              color: '#fff',
-              borderRadius: 10,
-              cursor: 'pointer',
-              fontWeight: 700,
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              transition: 'background 0.25s',
-              boxShadow: '0 4px 12px rgba(37,99,235,0.3)',
-            }}
+            className="primary-button"
+            style={saveSuccess ? { background: 'linear-gradient(135deg, #16a34a, #15803d)' } : undefined}
+            data-tour="save-answer-key"
           >
             <Save size={15} />
             {saveSuccess ? 'Saved!' : 'Save Answer Key'}
           </button>
+          </div>
         </div>
 
-        {/* Progress bar */}
         <ProgressBar
           value={answeredCount}
           max={questionList.length}
           label={`Progress: ${answeredCount} of ${questionList.length} questions`}
         />
 
-        {/* Validation summary */}
         {errorCount > 0 && (
           <div style={{
             marginTop: 12,
             padding: '10px 14px',
             background: 'var(--color-red-light)',
-            border: '2px solid #fca5a5',
-            borderRadius: 10,
+            border: '1px solid #fca5a5',
+            borderRadius: 14,
             display: 'flex',
             gap: 10,
             alignItems: 'flex-start',
@@ -346,13 +293,13 @@ export function AnswerKeySetup({
         )}
       </div>
 
-      {/* ---- Questions list ---- */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="answer-panel-body" data-tour="answer-input-section">
         {questionList.map((question) => (
           <QuestionRow
             key={question.questionNumber}
             question={question}
             validationError={validationErrors[question.questionNumber]}
+            enableDragDrop={enableDragDrop}
             onAnswerChange={(val) =>
               updateQuestion(question.questionNumber, {
                 answer: val,
@@ -365,21 +312,12 @@ export function AnswerKeySetup({
         ))}
       </div>
 
-      {/* ---- Footer hint ---- */}
-      <div style={{
-        padding: '10px 24px',
-        borderTop: '1px solid var(--color-gray-100)',
-        display: 'flex',
-        gap: 18,
-        fontSize: 11,
-        color: 'var(--color-gray-400)',
-        flexShrink: 0,
-      }}>
+      <div className="answer-panel-footer">
         <span>⌨️ <strong>Ctrl+Z</strong> Undo</span>
         <span>⌨️ <strong>Ctrl+Y</strong> Redo</span>
         <span>↵ <strong>Enter</strong> Add numeric value</span>
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -390,21 +328,7 @@ function IconButton({ onClick, disabled, title, children }) {
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       title={title}
-      style={{
-        width: 36, height: 36,
-        borderRadius: 10,
-        border: '2px solid var(--color-gray-200)',
-        background: '#fff',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.4 : 1,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: 'var(--color-gray-600)',
-        transition: 'all 0.15s',
-      }}
-      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'var(--color-gray-100)' }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+      className="icon-button"
     >
       {children}
     </button>

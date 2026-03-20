@@ -110,7 +110,7 @@ export function QuizSelector({
           <QuizCard
             key={quiz.id}
             quiz={quiz}
-            status={getQuizStatus(quiz, savedAnswers[quiz.id])}
+            status={getQuizStatus(quiz, savedAnswers[quiz.id]?.questions)}
             isSelected={selectedQuiz?.id === quiz.id}
             onSelect={() => onSelectQuiz(quiz)}
           />

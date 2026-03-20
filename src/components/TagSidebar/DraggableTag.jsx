@@ -3,12 +3,13 @@ import { useDraggable } from '@dnd-kit/core'
 export function AnswerTagCard({ tag, isDragging = false }) {
   return (
     <div
+      className="option-tile"
       style={{
-        width: '100%',
-        minWidth: 120,
-        padding: '16px 0',
-        borderRadius: 'var(--radius-md)',
-        textAlign: 'center',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 18,
         background: tag.color,
         color: '#fff',
         cursor: 'grab',
@@ -16,11 +17,11 @@ export function AnswerTagCard({ tag, isDragging = false }) {
         opacity: isDragging ? 0.92 : 1,
         transform: isDragging ? 'scale(1.04)' : 'scale(1)',
         transition: 'transform 0.15s, opacity 0.15s, box-shadow 0.15s',
-        boxShadow: `0 10px 24px ${tag.color}66`,
+        boxShadow: `0 16px 28px ${tag.color}33`,
         touchAction: 'none',
       }}
     >
-      <div style={{ fontSize: 38, fontWeight: 900, lineHeight: 1 }}>{tag.option}</div>
+      <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1 }}>{tag.option}</div>
       <div style={{
         fontSize: 10,
         fontWeight: 700,
@@ -53,7 +54,7 @@ export function DraggableTag({ tag }) {
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0.3 : 1 }}
+      style={{ opacity: isDragging ? 0.28 : 1 }}
     >
       <AnswerTagCard tag={tag} />
     </div>

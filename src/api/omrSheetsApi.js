@@ -10,6 +10,7 @@ function flattenQuestions(omrSheet) {
       part.questions.map((question) => ({
         questionNumber: question.question_number,
         type: normalizeQuestionType(question.type),
+        totalBubbles: normalizeQuestionType(question.type) === 'Numeric' ? 4 : undefined,
         sectionName: section.section_name,
         part: part.part,
         description: part.description,

@@ -1,11 +1,8 @@
 import { useState } from 'react'
 import { isValidNumeric } from '../../utils/validation.js'
 
-const QUICK_VALUES = ['0', '1', '2', '5', '10', '100']
-
 /**
  * NumericInput — allows adding multiple accepted numeric answers.
- * Supports quick-value buttons and Enter-key submission.
  */
 export function NumericInput({ answers, onChange, hasError }) {
   const [inputValue, setInputValue] = useState('')
@@ -28,13 +25,12 @@ export function NumericInput({ answers, onChange, hasError }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {/* Accepted answers chips */}
+    <div className="numeric-stack">
       {answers.length > 0 && (
         <div style={{
           background: '#fff',
-          border: '2px solid #c4b5fd',
-          borderRadius: 10,
+          border: '1px solid #ddd6fe',
+          borderRadius: 14,
           padding: 12,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -51,8 +47,7 @@ export function NumericInput({ answers, onChange, hasError }) {
         </div>
       )}
 
-      {/* Text input + Add button */}
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div className="numeric-entry-row">
         <input
           type="text"
           value={inputValue}
@@ -62,11 +57,12 @@ export function NumericInput({ answers, onChange, hasError }) {
           style={{
             flex: 1,
             padding: '11px 14px',
-            borderRadius: 10,
+            borderRadius: 12,
             fontSize: 14,
-            border: `2px solid ${hasError || inputError ? '#fca5a5' : 'var(--color-gray-300)'}`,
+            border: `1px solid ${hasError || inputError ? '#fca5a5' : 'var(--color-gray-300)'}`,
             outline: 'none',
             transition: 'border-color 0.15s',
+            background: '#fff',
           }}
           onFocus={(e) => { e.currentTarget.style.borderColor = '#a78bfa' }}
           onBlur={(e) => { e.currentTarget.style.borderColor = hasError || inputError ? '#fca5a5' : 'var(--color-gray-300)' }}
@@ -78,7 +74,7 @@ export function NumericInput({ answers, onChange, hasError }) {
             background: '#7c3aed',
             color: '#fff',
             border: 'none',
-            borderRadius: 10,
+            borderRadius: 12,
             fontWeight: 700,
             cursor: 'pointer',
             fontSize: 13,
@@ -96,32 +92,6 @@ export function NumericInput({ answers, onChange, hasError }) {
       {inputError && (
         <p style={{ fontSize: 12, color: 'var(--color-red)', marginTop: -4 }}>⚠️ {inputError}</p>
       )}
-
-      {/* Quick value buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-gray-500)' }}>Quick:</span>
-        {QUICK_VALUES.map((v) => (
-          <button
-            key={v}
-            onClick={() => addAnswer(v)}
-            style={{
-              padding: '5px 12px',
-              background: 'linear-gradient(135deg, #f3f4f6, #e5e7eb)',
-              border: '1px solid var(--color-gray-300)',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 600,
-              color: 'var(--color-gray-700)',
-              transition: 'all 0.12s',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = '#d1d5db' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, #f3f4f6, #e5e7eb)' }}
-          >
-            {v}
-          </button>
-        ))}
-      </div>
     </div>
   )
 }

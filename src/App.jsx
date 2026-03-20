@@ -3,6 +3,8 @@ import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { Toaster } from 'react-hot-toast'
 import { getQuizDefinitions } from './api/omrSheetsApi.js'
 import { AnswerKeyProvider, useAnswerKey } from './context/AnswerKeyContext.jsx'
+import { useMediaQuery } from './hooks/useMediaQuery.js'
+import { useOmrTour } from './hooks/useOmrTour.js'
 import { TopBar } from './components/TopBar/index.js'
 import { QuizSelector } from './components/QuizSelector/index.js'
 import { TagSidebar } from './components/TagSidebar/index.js'
@@ -24,6 +26,8 @@ function AppContent() {
   const [quizzes, setQuizzes] = useState([])
   const [isLoadingQuizzes, setIsLoadingQuizzes] = useState(true)
   const [quizLoadError, setQuizLoadError] = useState('')
+  const isTabletOrBelow = useMediaQuery('(max-width: 768px)')
+  const { startTour } = useOmrTour(inSetupMode)
 
   useEffect(() => {
     let isMounted = true
@@ -85,15 +89,12 @@ function AppContent() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+    <div className="app-shell">
       <Toaster position="top-right" toastOptions={{ duration: 2600 }} />
-      {/* Sticky top navigation bar */}
       <TopBar selectedQuiz={inSetupMode ? selectedQuiz : null} />
 
-      {/* Page content */}
-      <main style={{ maxWidth: 1800, margin: '0 auto', padding: '28px 28px' }}>
+      <main className="app-main">
         {!inSetupMode ? (
-          /* ── Step 1: Quiz selection ── */
           <div style={{ maxWidth: 700, margin: '0 auto' }}>
             <div style={{ marginBottom: 24 }}>
               <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--color-gray-900)' }}>
@@ -114,24 +115,18 @@ function AppContent() {
             />
           </div>
         ) : (
-          /* ── Step 2: 3-column answer-key layout ── */
           <DndContext
-            onDragStart={handleDragStart}
-            onDragEnd={clearDragState}
-            onDragCancel={clearDragState}
+            onDragStart={isTabletOrBelow ? undefined : handleDragStart}
+            onDragEnd={isTabletOrBelow ? undefined : clearDragState}
+            onDragCancel={isTabletOrBelow ? undefined : clearDragState}
           >
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '280px 1fr 240px',
-              gap: 20,
-              alignItems: 'start',
-            }}>
-              {/* Left — Answer-option drag tags */}
-              <div>
-                <TagSidebar />
-              </div>
+            <div className="setup-layout">
+              {!isTabletOrBelow && (
+                <div>
+                  <TagSidebar />
+                </div>
+              )}
 
-              {/* Centre — Answer key editor */}
               <div>
                 <AnswerKeySetup
                   quiz={selectedQuiz}
@@ -141,22 +136,20 @@ function AppContent() {
                   onBack={handleBack}
                   onSave={handleSave}
                   onBulkImport={() => setBulkOpen(true)}
+                  onStartTour={startTour}
+                  enableDragDrop={!isTabletOrBelow}
                 />
-              </div>
-
-              {/* Right — AI chatbot */}
-              <div>
-                <AIChatbot />
               </div>
             </div>
             <DragOverlay>
-              {activeTag ? <AnswerTagCard tag={activeTag} isDragging /> : null}
+              {!isTabletOrBelow && activeTag ? <AnswerTagCard tag={activeTag} isDragging /> : null}
             </DragOverlay>
           </DndContext>
         )}
       </main>
 
-      {/* Bulk-import modal */}
+      {inSetupMode && <AIChatbot />}
+
       <BulkImportDialog
         isOpen={bulkOpen}
         onClose={() => setBulkOpen(false)}
