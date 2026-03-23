@@ -1,5 +1,3 @@
-import { MOCK_OMR_SHEETS_RESPONSE } from '../data/omrSheetsData.js'
-
 function normalizeQuestionType(type) {
   if (type === 'Numerical' || type === 'numeric') return 'Numeric'
   if (type === 'mcq' || type === 'MCQ') return 'MCQ'
@@ -68,8 +66,14 @@ function mapOmrSheetToQuiz(wrapper) {
 }
 
 export async function getOmrSheets() {
-  await new Promise((resolve) => window.setTimeout(resolve, 200))
-  return MOCK_OMR_SHEETS_RESPONSE
+  const response = await fetch('/api/omr-sheets')
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(errorText || 'Failed to load OMR sheets.')
+  }
+
+  return response.json()
 }
 
 export async function getQuizDefinitions() {
