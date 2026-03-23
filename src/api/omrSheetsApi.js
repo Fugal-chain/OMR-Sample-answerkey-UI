@@ -1,7 +1,9 @@
 import { MOCK_OMR_SHEETS_RESPONSE } from '../data/omrSheetsData.js'
 
 function normalizeQuestionType(type) {
-  return type === 'Numerical' ? 'Numeric' : type
+  if (type === 'Numerical' || type === 'numeric') return 'Numeric'
+  if (type === 'mcq' || type === 'MCQ') return 'MCQ'
+  return type
 }
 
 function flattenQuestions(omrSheet) {
@@ -19,7 +21,37 @@ function flattenQuestions(omrSheet) {
   )
 }
 
+function mapAnswerKeysToConfiguration(answerKeys = []) {
+  return answerKeys.map((answerKey) => {
+    const type = normalizeQuestionType(answerKey.question_type)
+
+    return {
+      questionNumber: answerKey.question_index,
+      type,
+      totalBubbles: type === 'Numeric' ? answerKey.digit_count ?? 4 : undefined,
+      allowDecimal: type === 'Numeric' ? answerKey.allow_decimal ?? true : undefined,
+      allowFraction: type === 'Numeric' ? answerKey.allow_fraction ?? true : undefined,
+      allowNegative: type === 'Numeric' ? answerKey.allow_negative ?? true : undefined,
+    }
+  })
+}
+
 function mapOmrSheetToQuiz(wrapper) {
+  if (Array.isArray(wrapper.answer_keys)) {
+    const quiz = wrapper.quiz ?? {}
+
+    return {
+      id: quiz.quiz_id,
+      name: quiz.title,
+      examId: quiz.quiz_id,
+      subject: wrapper.omr_config?.sheet_name ?? '',
+      totalQuestions: quiz.total_questions ?? wrapper.answer_keys.length,
+      sections: [],
+      omrConfiguration: mapAnswerKeysToConfiguration(wrapper.answer_keys),
+      hasAnswerKey: false,
+    }
+  }
+
   const omrSheet = wrapper.omr_sheet
   const sectionNames = omrSheet.sections.map((section) => section.section_name)
 

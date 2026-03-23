@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { MCQInput } from './MCQInput.jsx'
 import { NumericInput } from './NumericInput.jsx'
@@ -68,7 +69,7 @@ export function QuestionRow({
             type={question.type}
           />
 
-          <div className="question-input-area">
+          <div className={`question-input-area${question.type === 'MCQ' ? ' is-mcq' : ' is-numeric'}`}>
           {question.type === 'MCQ' ? (
             <MCQInput
               selectedAnswer={question.answer}
@@ -88,6 +89,9 @@ export function QuestionRow({
               isHighlighted={isHighlighted}
               totalBubbles={question.totalBubbles}
               suggestionsEnabled={suggestionsEnabled}
+              allowDecimal={question.allowDecimal}
+              allowFraction={question.allowFraction}
+              allowNegative={question.allowNegative}
             />
           )}
         </div>
@@ -156,23 +160,47 @@ function QuestionMeta({ number, type }) {
 }
 
 function QuestionPoints({ points = 1, onPointsChange }) {
+  const [draftValue, setDraftValue] = useState(String(points))
+
+  useEffect(() => {
+    setDraftValue(String(points))
+  }, [points])
+
+  const commitPoints = () => {
+    const numericValue = Number(draftValue)
+    if (!Number.isFinite(numericValue)) return
+
+    const nextValue = Math.min(100, Math.max(1, Math.round(numericValue)))
+    onPointsChange?.(nextValue)
+    setDraftValue(String(nextValue))
+  }
+
   return (
     <div className="points-stack">
-      <span className="points-label">Points</span>
-      <div className="points-pill-row">
-        {[1, 2, 5].map((value) => {
-          const isSelected = points === value
-          return (
-            <button
-              key={value}
-              type="button"
-              className={`points-pill${isSelected ? ' is-selected' : ''}`}
-              onClick={() => onPointsChange?.(value)}
-            >
-              {value}
-            </button>
-          )
-        })}
+      <span className="points-label">Marks</span>
+      <div className="points-input-row">
+        <input
+          type="number"
+          min="1"
+          max="100"
+          inputMode="numeric"
+          className="points-input"
+          value={draftValue}
+          onChange={(event) => setDraftValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              commitPoints()
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="points-set-button"
+          onClick={commitPoints}
+        >
+          Set
+        </button>
       </div>
     </div>
   )

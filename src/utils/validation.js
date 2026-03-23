@@ -21,6 +21,35 @@ export function isValidNumeric(value) {
   return !isNaN(parseFloat(value)) && isFinite(value)
 }
 
+function normalizeNumericRules(options = {}) {
+  return {
+    allowDecimal: options.allowDecimal ?? true,
+    allowFraction: options.allowFraction ?? true,
+    allowNegative: options.allowNegative ?? true,
+  }
+}
+
+export function getNumericRuleError(value, options = {}) {
+  const trimmedValue = String(value ?? '').trim()
+  const { allowDecimal, allowFraction, allowNegative } = normalizeNumericRules(options)
+
+  if (!trimmedValue) return null
+
+  if (!allowNegative && trimmedValue.includes('-')) {
+    return 'Negative values are not allowed'
+  }
+
+  if (!allowFraction && trimmedValue.includes('/')) {
+    return 'Fractions are not allowed'
+  }
+
+  if (!allowDecimal && trimmedValue.includes('.')) {
+    return 'Decimal values are not allowed'
+  }
+
+  return null
+}
+
 export function parseNumericValues(value) {
   return String(value ?? '')
     .split(',')
@@ -28,7 +57,7 @@ export function parseNumericValues(value) {
     .filter(Boolean)
 }
 
-export function validateNumericAnswers(answers = []) {
+export function validateNumericAnswers(answers = [], options = {}) {
   if (!Array.isArray(answers) || answers.length === 0) {
     return 'At least one numeric answer is required'
   }
@@ -37,6 +66,9 @@ export function validateNumericAnswers(answers = []) {
 
   for (const answer of answers) {
     const trimmedAnswer = String(answer ?? '').trim()
+
+    const ruleError = getNumericRuleError(trimmedAnswer, options)
+    if (ruleError) return ruleError
 
     if (!isValidNumeric(trimmedAnswer)) {
       return 'Enter a valid number (e.g. 42 or 3.14)'
@@ -52,7 +84,7 @@ export function validateNumericAnswers(answers = []) {
   return null
 }
 
-export function validateNumericInputValue(value, answers = []) {
+export function validateNumericInputValue(value, answers = [], options = {}) {
   const parsedValues = parseNumericValues(value)
   if (!parsedValues.length) return null
 
@@ -63,6 +95,9 @@ export function validateNumericInputValue(value, answers = []) {
 
   for (const answer of parsedValues) {
     const trimmedAnswer = String(answer ?? '').trim()
+
+    const ruleError = getNumericRuleError(trimmedAnswer, options)
+    if (ruleError) return ruleError
 
     if (!isValidNumeric(trimmedAnswer)) {
       return 'Enter a valid number (e.g. 42 or 3.14)'
@@ -84,7 +119,11 @@ export function validateQuestion(question) {
   }
 
   if (question.type === 'Numeric') {
-    return validateNumericAnswers(question.answers)
+    return validateNumericAnswers(question.answers, {
+      allowDecimal: question.allowDecimal,
+      allowFraction: question.allowFraction,
+      allowNegative: question.allowNegative,
+    })
   }
 
   return null

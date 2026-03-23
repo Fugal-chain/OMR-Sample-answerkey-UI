@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  getNumericRuleError,
   parseNumericValues,
   validateNumericInputValue,
 } from '../../utils/validation.js'
@@ -32,9 +33,18 @@ export function NumericInput({
   isHighlighted,
   totalBubbles = 4,
   suggestionsEnabled = true,
+  allowDecimal = true,
+  allowFraction = true,
+  allowNegative = true,
 }) {
   const [inputValue, setInputValue] = useState('')
   const [inputError, setInputError] = useState('')
+  const [blockedInputError, setBlockedInputError] = useState('')
+
+  const numericRules = useMemo(
+    () => ({ allowDecimal, allowFraction, allowNegative }),
+    [allowDecimal, allowFraction, allowNegative]
+  )
 
   const suggestions = useMemo(
     () => (suggestionsEnabled ? getSuggestions(inputValue, totalBubbles) : []),
@@ -42,19 +52,40 @@ export function NumericInput({
   )
 
   useEffect(() => {
-    setInputError(validateNumericInputValue(inputValue, answers) || '')
-  }, [answers, inputValue])
+    setInputError(validateNumericInputValue(inputValue, answers, numericRules) || '')
+  }, [answers, inputValue, numericRules])
+
+  const sanitizeInputValue = (value) => {
+    let nextValue = String(value ?? '')
+
+    if (!allowDecimal) nextValue = nextValue.replace(/\./g, '')
+    if (!allowFraction) nextValue = nextValue.replace(/\//g, '')
+    if (!allowNegative) nextValue = nextValue.replace(/-/g, '')
+
+    return nextValue
+  }
+
+  const handleInputChange = (event) => {
+    const rawValue = event.target.value
+    const sanitizedValue = sanitizeInputValue(rawValue)
+    const ruleError = getNumericRuleError(rawValue, numericRules)
+
+    setBlockedInputError(ruleError || '')
+    setInputValue(sanitizedValue)
+  }
 
   const addAnswer = (value = inputValue) => {
-    const parsedValues = parseNumericValues(value)
+    const sanitizedValue = sanitizeInputValue(value)
+    const parsedValues = parseNumericValues(sanitizedValue)
     if (!parsedValues.length) return
 
-    const error = validateNumericInputValue(value, answers)
+    const error = validateNumericInputValue(sanitizedValue, answers, numericRules)
     if (error) {
       setInputError(error)
       return
     }
 
+    setBlockedInputError('')
     setInputError('')
     onChange([...answers, ...parsedValues])
     setInputValue('')
@@ -64,7 +95,7 @@ export function NumericInput({
     onChange(answers.filter((_, i) => i !== index))
   }
 
-  const showError = inputError || validationError
+  const showError = blockedInputError || inputError || validationError
 
   return (
     <div className="numeric-stack">
@@ -97,9 +128,9 @@ export function NumericInput({
             ref={inputRef}
             type="text"
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={(e) => e.key === 'Enter' && addAnswer()}
-            placeholder="Enter numeric value(s), e.g. 2,3,12"
+            placeholder="Enter numeric value(s)"
             className="numeric-entry-input"
           />
         </div>

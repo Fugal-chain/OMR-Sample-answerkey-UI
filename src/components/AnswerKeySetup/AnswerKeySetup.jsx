@@ -31,6 +31,18 @@ function buildInitialQuestions(omrConfiguration, savedQuestions = []) {
       points: savedQuestion?.points ?? 1,
       answer: omrQ.type === 'MCQ' ? savedAnswer : '',
       totalBubbles,
+      allowDecimal:
+        omrQ.type === 'Numeric'
+          ? savedQuestion?.allowDecimal ?? omrQ.allowDecimal ?? true
+          : undefined,
+      allowFraction:
+        omrQ.type === 'Numeric'
+          ? savedQuestion?.allowFraction ?? omrQ.allowFraction ?? true
+          : undefined,
+      allowNegative:
+        omrQ.type === 'Numeric'
+          ? savedQuestion?.allowNegative ?? omrQ.allowNegative ?? true
+          : undefined,
       answers:
         omrQ.type === 'Numeric' && Array.isArray(savedQuestion?.answers)
           ? savedQuestion.answers

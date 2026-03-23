@@ -26,7 +26,7 @@ function handleComposerEnter(event, submit) {
  */
 export function AIChatbot({ variant = 'desktop' }) {
   const isMobile = variant === 'mobile'
-  const [isOpen, setIsOpen] = useState(!isMobile)
+  const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -43,7 +43,7 @@ export function AIChatbot({ variant = 'desktop' }) {
   }, [messages, isTyping])
 
   useEffect(() => {
-    setIsOpen(!isMobile)
+    setIsOpen(false)
   }, [isMobile])
 
   const sendMessage = (text) => {
@@ -62,6 +62,21 @@ export function AIChatbot({ variant = 'desktop' }) {
     }, 650)
   }
 
+  if (!isMobile && !isOpen) {
+    return (
+      <div className="chatbot-launcher-wrap">
+        <button
+          type="button"
+          className="chatbot-launcher"
+          onClick={() => setIsOpen(true)}
+          aria-label="Open AI assistant"
+        >
+          <div className="chatbot-avatar">🤖</div>
+        </button>
+      </div>
+    )
+  }
+
   return (
     <section className={isMobile ? 'chatbot-mobile-panel' : 'sidebar-panel chatbot-panel'}>
       <button
@@ -70,7 +85,17 @@ export function AIChatbot({ variant = 'desktop' }) {
         onClick={isMobile ? () => setIsOpen((prev) => !prev) : undefined}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div className="chatbot-avatar">🤖</div>
+          <button
+            type="button"
+            className="chatbot-icon-button"
+            onClick={(event) => {
+              event.stopPropagation()
+              setIsOpen((prev) => !prev)
+            }}
+            aria-label={isOpen ? 'Collapse AI assistant' : 'Expand AI assistant'}
+          >
+            <div className="chatbot-avatar">🤖</div>
+          </button>
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--color-gray-900)' }}>AI Assistant</div>
             <div style={{ fontSize: 11, color: 'var(--color-green)', display: 'flex', alignItems: 'center', gap: 4 }}>
