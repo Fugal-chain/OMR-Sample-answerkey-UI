@@ -18,8 +18,14 @@ function buildInitialQuestions(omrConfiguration, savedQuestions = []) {
 
   return omrConfiguration.map((omrQ) => {
     const savedQuestion = savedByQuestionNumber.get(omrQ.questionNumber)
-    const savedAnswer = savedQuestion?.answer || ''
-    const savedTag = savedQuestion?.tag || findTagForOption(savedAnswer)
+    const initialMcqAnswer = savedQuestion?.answer ?? omrQ.answer ?? ''
+    const initialNumericAnswers =
+      Array.isArray(savedQuestion?.answers)
+        ? savedQuestion.answers
+        : Array.isArray(omrQ.answers)
+          ? omrQ.answers
+          : []
+    const savedTag = savedQuestion?.tag || findTagForOption(initialMcqAnswer)
     const totalBubbles =
       omrQ.type === 'Numeric'
         ? savedQuestion?.totalBubbles ?? omrQ.totalBubbles ?? 4
@@ -28,8 +34,8 @@ function buildInitialQuestions(omrConfiguration, savedQuestions = []) {
     return {
       questionNumber: omrQ.questionNumber,
       type: omrQ.type,
-      points: savedQuestion?.points ?? 1,
-      answer: omrQ.type === 'MCQ' ? savedAnswer : '',
+      points: savedQuestion?.points ?? omrQ.points ?? 1,
+      answer: omrQ.type === 'MCQ' ? initialMcqAnswer : '',
       totalBubbles,
       allowDecimal:
         omrQ.type === 'Numeric'
@@ -43,10 +49,7 @@ function buildInitialQuestions(omrConfiguration, savedQuestions = []) {
         omrQ.type === 'Numeric'
           ? savedQuestion?.allowNegative ?? omrQ.allowNegative ?? true
           : undefined,
-      answers:
-        omrQ.type === 'Numeric' && Array.isArray(savedQuestion?.answers)
-          ? savedQuestion.answers
-          : [],
+      answers: omrQ.type === 'Numeric' ? initialNumericAnswers : [],
       tag: omrQ.type === 'MCQ' ? savedTag : undefined,
     }
   })
@@ -73,7 +76,7 @@ function clearQuestionValues(question) {
 
 function findFirstErrorQuestion(questions, errors) {
   const firstEmptyQuestion = questions.find(
-    (question) => errors[question.questionNumber] && !isQuestionAnswered(question)
+    (question) => errors[question.questionNumber] && isQuestionAnswered(question) === false
   )
 
   if (firstEmptyQuestion) return firstEmptyQuestion.questionNumber
@@ -92,32 +95,53 @@ export function AnswerKeySetup({
   onBulkImportApplied,
   onBack,
   onSave,
+  onPersist,
   onBulkImport,
   onStartTour,
   onRegisterNavbarActions,
   onSaveStatusChange,
   enableDragDrop = true,
 }) {
-  const [historySeed, setHistorySeed] = useState(() =>
-    buildInitialQuestions(quiz.omrConfiguration, savedQuestions)
+  const initialQuestions = useMemo(
+    () => buildInitialQuestions(quiz.omrConfiguration, savedQuestions),
+    [quiz.id]
   )
+  const [historySeed, setHistorySeed] = useState(initialQuestions)
   const [validationErrors, setValidationErrors] = useState({})
   const [isManualSaving, setIsManualSaving] = useState(false)
+  const [isPersisting, setIsPersisting] = useState(false)
   const [highlightedQuestion, setHighlightedQuestion] = useState(null)
   const [numericSuggestionsEnabled, setNumericSuggestionsEnabled] = useState(true)
   const questionRefs = useRef(new Map())
   const inputRefs = useRef(new Map())
   const hasHydratedRef = useRef(false)
+  const activeQuizIdRef = useRef(quiz.id)
   const onSaveRef = useRef(onSave)
+  const onPersistRef = useRef(onPersist)
   const onSaveStatusChangeRef = useRef(onSaveStatusChange)
+  const lastPersistedSnapshotRef = useRef(serializeQuestions(initialQuestions))
+  const persistInFlightRef = useRef(false)
 
   useEffect(() => {
-    setHistorySeed(buildInitialQuestions(quiz.omrConfiguration, savedQuestions))
-  }, [quiz.id, savedQuestions])
+    if (activeQuizIdRef.current === quiz.id) return
+
+    const nextSeed = buildInitialQuestions(quiz.omrConfiguration, savedQuestions)
+    activeQuizIdRef.current = quiz.id
+    hasHydratedRef.current = false
+    lastPersistedSnapshotRef.current = serializeQuestions(nextSeed)
+    setHistorySeed(nextSeed)
+    setValidationErrors({})
+    setIsManualSaving(false)
+    setIsPersisting(false)
+  }, [quiz.id, quiz.omrConfiguration, savedQuestions])
 
   useEffect(() => {
     onSaveRef.current = onSave
   }, [onSave])
+
+  useEffect(() => {
+    onPersistRef.current = onPersist
+  }, [onPersist])
 
   useEffect(() => {
     onSaveStatusChangeRef.current = onSaveStatusChange
@@ -145,6 +169,18 @@ export function AnswerKeySetup({
     [savedQuestions]
   )
 
+  const answeredCount = questionList.filter(isQuestionAnswered).length
+  const derivedValidationErrors = useMemo(
+    () => validateAllQuestions(questionList),
+    [questionList]
+  )
+  const errorCount = Object.keys(validationErrors).length
+  const isComplete =
+    questionList.length > 0 &&
+    answeredCount === questionList.length &&
+    Object.keys(derivedValidationErrors).length === 0
+  const hasUnsyncedDatabaseChanges = serializedQuestionList !== lastPersistedSnapshotRef.current
+
   useEffect(() => {
     onRegisterNavbarActions?.({
       undo,
@@ -158,7 +194,7 @@ export function AnswerKeySetup({
   }, [canRedo, canUndo, onRegisterNavbarActions, onStartTour, redo, undo])
 
   useEffect(() => {
-    if (!bulkImportPayload?.entries?.length) return
+    if (bulkImportPayload?.entries?.length == null || bulkImportPayload.entries.length === 0) return
     if (bulkImportPayload.quizId !== quiz.id) return
 
     const nextQuestions = questionList.map((question) => {
@@ -192,7 +228,7 @@ export function AnswerKeySetup({
 
   useDndMonitor({
     onDragEnd(event) {
-      if (!enableDragDrop) return
+      if (enableDragDrop === false) return
 
       const tag = event.active?.data?.current?.tag
       const overData = event.over?.data?.current
@@ -209,22 +245,25 @@ export function AnswerKeySetup({
   })
 
   useEffect(() => {
-    if (!questionList.length) return
+    if (questionList.length === 0) return
 
-    if (!hasHydratedRef.current) {
+    if (hasHydratedRef.current === false) {
       hasHydratedRef.current = true
       return
     }
 
     if (serializedQuestionList === serializedSavedQuestions) {
-      onSaveStatusChangeRef.current?.({ state: 'saved', savedAt: Date.now() })
       return
     }
 
-    onSaveStatusChangeRef.current?.({ state: 'saving', savedAt: null })
+    onSaveStatusChangeRef.current?.({ state: 'saving', savedAt: null, scope: 'local' })
     const autosaveTimer = window.setTimeout(() => {
       onSaveRef.current?.(questionList)
-      onSaveStatusChangeRef.current?.({ state: 'saved', savedAt: Date.now() })
+      onSaveStatusChangeRef.current?.({
+        state: 'draft-saved',
+        savedAt: Date.now(),
+        scope: 'local',
+      })
     }, 400)
 
     return () => window.clearTimeout(autosaveTimer)
@@ -236,6 +275,44 @@ export function AnswerKeySetup({
     const timer = window.setTimeout(() => setHighlightedQuestion(null), 2200)
     return () => window.clearTimeout(timer)
   }, [highlightedQuestion])
+
+  useEffect(() => {
+    if (isComplete === false || hasUnsyncedDatabaseChanges === false) return
+    if (persistInFlightRef.current) return
+
+    let isActive = true
+
+    const syncCompletedAnswerKey = async () => {
+      const saved = await persistQuestions({
+        questionsToPersist: questionList,
+        validationErrorsToUse: derivedValidationErrors,
+        skipValidation: true,
+      })
+    }
+
+    syncCompletedAnswerKey()
+
+    return () => {
+      isActive = false
+    }
+  }, [derivedValidationErrors, hasUnsyncedDatabaseChanges, isComplete, questionList])
+
+  useEffect(() => {
+    const shouldWarnBeforeLeave =
+      answeredCount > 0 &&
+      isComplete === false &&
+      hasUnsyncedDatabaseChanges
+
+    if (shouldWarnBeforeLeave === false) return undefined
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [answeredCount, hasUnsyncedDatabaseChanges, isComplete])
 
   const updateQuestion = (questionNumber, patch) => {
     const nextQuestions = questionList.map((question) =>
@@ -267,6 +344,40 @@ export function AnswerKeySetup({
     setHighlightedQuestion(questionNumber)
   }
 
+  const persistQuestions = async ({
+    questionsToPersist = questionList,
+    validationErrorsToUse = derivedValidationErrors,
+    skipValidation = false,
+    successMessage = 'Answer key saved to database',
+  } = {}) => {
+    if (persistInFlightRef.current) return false
+
+    const nextErrors = validationErrorsToUse ?? validateAllQuestions(questionsToPersist)
+    setValidationErrors(nextErrors)
+
+    if (skipValidation === false && Object.keys(nextErrors).length > 0) {
+      const firstErrorQuestion = findFirstErrorQuestion(questionsToPersist, nextErrors)
+      if (firstErrorQuestion) focusQuestion(firstErrorQuestion)
+      return false
+    }
+
+    persistInFlightRef.current = true
+    setIsPersisting(true)
+
+    try {
+      await onPersistRef.current?.(questionsToPersist)
+      lastPersistedSnapshotRef.current = serializeQuestions(questionsToPersist)
+      toast.success(successMessage)
+      return true
+    } catch (error) {
+      toast.error(error.message || 'Failed to save answer key to the database.')
+      return false
+    } finally {
+      persistInFlightRef.current = false
+      setIsPersisting(false)
+    }
+  }
+
   const handleSave = async () => {
     const errors = validateAllQuestions(questionList)
     setValidationErrors(errors)
@@ -278,40 +389,75 @@ export function AnswerKeySetup({
     }
 
     setIsManualSaving(true)
-    onSaveStatusChangeRef.current?.({ state: 'saving', savedAt: null })
-    onSaveRef.current?.(questionList)
 
-    await new Promise((resolve) => window.setTimeout(resolve, 300))
+    if (isComplete) {
+      await persistQuestions({
+        validationErrorsToUse: errors,
+        successMessage: 'Answer key saved to database',
+      })
+    } else {
+      onSaveStatusChangeRef.current?.({ state: 'saving', savedAt: null, scope: 'local' })
+      onSaveRef.current?.(questionList)
+      onSaveStatusChangeRef.current?.({
+        state: 'draft-saved',
+        savedAt: Date.now(),
+        scope: 'local',
+      })
+      toast.success('Draft saved locally. Complete all questions to auto-save to the database.')
+    }
 
+    await new Promise((resolve) => window.setTimeout(resolve, 200))
     setIsManualSaving(false)
-    onSaveStatusChangeRef.current?.({ state: 'saved', savedAt: Date.now() })
-    toast.success('Answer key saved successfully')
+  }
+
+  const handleBackClick = async () => {
+    const shouldConfirmLeaving =
+      answeredCount > 0 &&
+      isComplete === false &&
+      hasUnsyncedDatabaseChanges
+
+    if (shouldConfirmLeaving === false) {
+      onBack?.()
+      return
+    }
+
+    const confirmed = window.confirm(
+      'You have not completed the answer key setup yet. Leave this page and save the current answers to the database?'
+    )
+
+    if (confirmed === false) return
+
+    const saved = await persistQuestions({
+      skipValidation: true,
+      successMessage: 'Current answers saved to the database before leaving',
+    })
+
+    if (saved) {
+      onBack?.()
+    }
   }
 
   const handleClearAll = () => {
     const hasAnswers = questionList.some(isQuestionAnswered)
-    if (!hasAnswers) return
+    if (hasAnswers === false) return
 
     const confirmed = window.confirm(
       'Clear all entered answers for this quiz? This will remove all MCQ, numeric, and dropped tag values.'
     )
 
-    if (!confirmed) return
+    if (confirmed === false) return
 
     const nextQuestions = questionList.map(clearQuestionValues)
     setQuestions(nextQuestions)
     setValidationErrors(validateAllQuestions(nextQuestions))
   }
 
-  const answeredCount = questionList.filter(isQuestionAnswered).length
-  const errorCount = Object.keys(validationErrors).length
-
   return (
     <section className="answer-panel">
       <div className="answer-panel-header">
         <div className="answer-panel-title-row">
           <button
-            onClick={onBack}
+            onClick={handleBackClick}
             title="Back to quiz list"
             className="soft-button"
             style={{ padding: 0, width: 42, height: 42, flexShrink: 0 }}
@@ -343,19 +489,13 @@ export function AnswerKeySetup({
               onClick={handleSave}
               className="primary-button save-button"
               data-tour="save-answer-key"
-              disabled={isManualSaving}
+              disabled={isManualSaving || isPersisting}
             >
-              {isManualSaving ? <LoaderCircle size={15} className="spin-icon" /> : <Save size={15} />}
+              {isManualSaving || isPersisting ? <LoaderCircle size={15} className="spin-icon" /> : <Save size={15} />}
               Save Answer Key
             </button>
           </div>
         </div>
-
-        <ProgressBar
-          value={answeredCount}
-          max={questionList.length}
-          label={`Progress: ${answeredCount} of ${questionList.length} questions`}
-        />
 
         {questionList.some((question) => question.type === 'Numeric') && (
           <label className="numeric-toggle-row numeric-toggle-global">
@@ -390,6 +530,14 @@ export function AnswerKeySetup({
             </div>
           </div>
         )}
+      </div>
+
+      <div className="answer-panel-progress-sticky">
+        <ProgressBar
+          value={answeredCount}
+          max={questionList.length}
+          label={`Progress: ${answeredCount} of ${questionList.length} questions`}
+        />
       </div>
 
       <div className="answer-panel-body" data-tour="answer-input-section">

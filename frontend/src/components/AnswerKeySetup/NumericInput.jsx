@@ -5,7 +5,7 @@ import {
   validateNumericInputValue,
 } from '../../utils/validation.js'
 
-function getSuggestions(value, maxDigits) {
+function getSuggestions(value, maxDigits, existingAnswers = []) {
   const trimmed = String(value ?? '').trim()
   if (!trimmed || trimmed.includes(',') || trimmed.startsWith('-') || trimmed.includes('.')) {
     return []
@@ -13,9 +13,16 @@ function getSuggestions(value, maxDigits) {
 
   if (!/^\d+$/.test(trimmed)) return []
 
+  const existingAnswerSet = new Set(
+    existingAnswers.map((answer) => String(answer ?? '').trim()).filter(Boolean)
+  )
+
   const suggestionSet = new Set()
   for (let length = trimmed.length + 1; length <= maxDigits; length += 1) {
-    suggestionSet.add(trimmed.padStart(length, '0'))
+    const suggestion = trimmed.padStart(length, '0')
+    if (!existingAnswerSet.has(suggestion)) {
+      suggestionSet.add(suggestion)
+    }
   }
 
   return Array.from(suggestionSet)
@@ -47,8 +54,8 @@ export function NumericInput({
   )
 
   const suggestions = useMemo(
-    () => (suggestionsEnabled ? getSuggestions(inputValue, totalBubbles) : []),
-    [inputValue, suggestionsEnabled, totalBubbles]
+    () => (suggestionsEnabled ? getSuggestions(inputValue, totalBubbles, answers) : []),
+    [answers, inputValue, suggestionsEnabled, totalBubbles]
   )
 
   useEffect(() => {
@@ -95,6 +102,19 @@ export function NumericInput({
     onChange(answers.filter((_, i) => i !== index))
   }
 
+  const handleInputKeyDown = (event) => {
+    if (event.key === 'Tab' && !event.shiftKey && suggestions.length > 0) {
+      event.preventDefault()
+      addAnswer(suggestions[0])
+      return
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      addAnswer()
+    }
+  }
+
   const showError = blockedInputError || inputError || validationError
 
   return (
@@ -129,7 +149,7 @@ export function NumericInput({
             type="text"
             value={inputValue}
             onChange={handleInputChange}
-            onKeyDown={(e) => e.key === 'Enter' && addAnswer()}
+            onKeyDown={handleInputKeyDown}
             placeholder="Enter numeric value(s)"
             className="numeric-entry-input"
           />

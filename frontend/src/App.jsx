@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import { Toaster } from 'react-hot-toast'
-import { getQuizDefinitions } from './api/omrSheetsApi.js'
+import { getQuizDefinitions, saveQuizAnswerKey } from './api/omrSheetsApi.js'
 import { AnswerKeyProvider, useAnswerKey } from './context/AnswerKeyContext.jsx'
 import { useMediaQuery } from './hooks/useMediaQuery.js'
 import { useOmrTour } from './hooks/useOmrTour.js'
@@ -13,15 +13,12 @@ import { AnswerKeySetup } from './components/AnswerKeySetup/index.js'
 import { AIChatbot } from './components/AIChatbot/index.js'
 import { BulkImportDialog } from './components/BulkImportDialog/index.js'
 
-/**
- * Inner app — consumes the AnswerKeyContext.
- */
 function AppContent() {
-  const { saveAnswers, getAnswers, savedAnswers } = useAnswerKey()
+  const { saveAnswers, getAnswerRecord, savedAnswers } = useAnswerKey()
   const [selectedQuiz, setSelectedQuiz] = useState(null)
   const [inSetupMode, setInSetupMode] = useState(false)
   const [editorControls, setEditorControls] = useState(null)
-  const [saveStatus, setSaveStatus] = useState({ state: 'idle', savedAt: null })
+  const [saveStatus, setSaveStatus] = useState({ state: 'idle', savedAt: null, scope: null })
   const [bulkOpen, setBulkOpen] = useState(false)
   const [activeTag, setActiveTag] = useState(null)
   const [bulkImportPayload, setBulkImportPayload] = useState(null)
@@ -59,27 +56,45 @@ function AppContent() {
   const handleSelectQuiz = (quiz) => {
     setSelectedQuiz(quiz)
     setInSetupMode(true)
-    setSaveStatus({ state: 'idle', savedAt: null })
+    setSaveStatus({ state: 'idle', savedAt: null, scope: null })
   }
 
   const handleBack = () => {
     setSelectedQuiz(null)
     setInSetupMode(false)
     setEditorControls(null)
-    setSaveStatus({ state: 'idle', savedAt: null })
+    setSaveStatus({ state: 'idle', savedAt: null, scope: null })
   }
 
-  const handleSave = useCallback((answers) => {
-    if (!selectedQuiz?.id) return
+  const handleDraftSave = useCallback((answers) => {
+    if (selectedQuiz?.id == null) return
 
-    saveAnswers(selectedQuiz.id, answers)
+    saveAnswers(selectedQuiz.id, answers, { source: 'local-draft' })
     setSaveStatus({
-      state: 'saved',
+      state: 'draft-saved',
       savedAt: Date.now(),
+      scope: 'local',
     })
   }, [saveAnswers, selectedQuiz?.id])
 
-  const savedAnswerKey = selectedQuiz ? getAnswers(selectedQuiz.id) : null
+  const handlePersist = useCallback(async (answers) => {
+    if (selectedQuiz?.id == null) {
+      throw new Error('No quiz is selected.')
+    }
+
+    setSaveStatus({ state: 'syncing', savedAt: null, scope: 'database' })
+    const payload = await saveQuizAnswerKey(selectedQuiz.id, answers)
+    saveAnswers(selectedQuiz.id, answers, { source: 'database' })
+    setSaveStatus({
+      state: 'saved',
+      savedAt: Date.now(),
+      scope: 'database',
+    })
+    return payload
+  }, [saveAnswers, selectedQuiz?.id])
+
+  const selectedAnswerRecord = selectedQuiz ? getAnswerRecord(selectedQuiz.id) : null
+  const savedAnswerKey = selectedAnswerRecord?.source === 'local-draft' ? selectedAnswerRecord.questions : null
 
   const handleDragStart = (event) => {
     const tag = event.active?.data?.current?.tag ?? null
@@ -109,7 +124,7 @@ function AppContent() {
       />
 
       <main className="app-main">
-        {!inSetupMode ? (
+        {inSetupMode === false ? (
           <div style={{ maxWidth: 700, margin: '0 auto' }}>
             <div style={{ marginBottom: 24 }}>
               <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--color-gray-900)' }}>
@@ -136,7 +151,7 @@ function AppContent() {
             onDragCancel={isTabletOrBelow ? undefined : clearDragState}
           >
             <div className="setup-layout">
-              {!isTabletOrBelow && (
+              {isTabletOrBelow === false && (
                 <div className="setup-sidebar-stack">
                   <div className="fixed-drag-panel">
                     <TagSidebar />
@@ -155,17 +170,18 @@ function AppContent() {
                   bulkImportPayload={bulkImportPayload}
                   onBulkImportApplied={() => setBulkImportPayload(null)}
                   onBack={handleBack}
-                  onSave={handleSave}
+                  onSave={handleDraftSave}
+                  onPersist={handlePersist}
                   onBulkImport={() => setBulkOpen(true)}
                   onStartTour={startTour}
                   onSaveStatusChange={setSaveStatus}
                   onRegisterNavbarActions={setEditorControls}
-                  enableDragDrop={!isTabletOrBelow}
+                  enableDragDrop={isTabletOrBelow === false}
                 />
               </div>
             </div>
             <DragOverlay>
-              {!isTabletOrBelow && activeTag ? <AnswerTagCard tag={activeTag} isDragging /> : null}
+              {isTabletOrBelow === false && activeTag ? <AnswerTagCard tag={activeTag} isDragging /> : null}
             </DragOverlay>
           </DndContext>
         )}
@@ -190,9 +206,6 @@ function AppContent() {
   )
 }
 
-/**
- * App root — wraps everything in the AnswerKey context provider.
- */
 export default function App() {
   return (
     <AnswerKeyProvider>

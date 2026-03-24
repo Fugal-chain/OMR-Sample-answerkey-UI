@@ -1,123 +1,193 @@
 # OMR Exam Dashboard
 
-A modern React + Vite application for managing OMR (Optical Mark Recognition) exam answer keys. Teachers can select a quiz, drag-and-drop answer options, enter numeric answers, bulk-import from text, and undo/redo changes.
+OMR answer-key management system split into separate frontend and backend apps.
 
-## 🚀 Getting Started
+## Overview
+
+This project now has two parts:
+
+- `frontend/`: React + Vite UI for quiz selection, answer-key entry, bulk import, validation, and save flow
+- `backend/`: Node server that reads quiz and OMR data from the database and exposes `/api/omr-sheets`
+
+## Current Folder Structure
+
+```text
+omr-exam-dashboard/
+├── backend/
+│   ├── database/
+│   │   └── schema.sql
+│   ├── omrDb.js
+│   ├── package.json
+│   └── server.js
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   ├── index.html
+│   ├── package.json
+│   └── vite.config.js
+├── package.json
+├── package-lock.json
+└── README.md
+```
+
+## Prerequisites
+
+- Node.js 18+
+- npm
+- A valid database config in the root `.env`
+
+Example `.env`:
+
+```env
+DB_HOST=your-host
+DB_PORT=your-port
+DB_USER=your-user
+DB_PASSWORD=your-password
+DB_NAME=ZipGrade
+```
+
+## Install Dependencies
+
+If dependencies are not installed yet, run this from the project root:
 
 ```bash
-# Install dependencies
 npm install
+```
 
-# Start development server
+## Run The Project
+
+### Option 1: Run from each app folder
+
+Backend:
+
+```bash
+cd backend
 npm run dev
+```
 
-# Build for production
+Frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+### Option 2: Run from the root
+
+Backend:
+
+```bash
+npm run dev:backend
+```
+
+Frontend:
+
+```bash
+npm run dev:frontend
+```
+
+## Local URLs
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3001`
+- API endpoint: `http://localhost:3001/api/omr-sheets`
+
+The frontend Vite dev server proxies `/api` requests to the backend.
+
+## Build Frontend
+
+From the root:
+
+```bash
 npm run build
+```
 
-# Preview production build
+Or from the frontend folder:
+
+```bash
+cd frontend
+npm run build
+```
+
+## Preview Frontend Build
+
+From the root:
+
+```bash
 npm run preview
 ```
 
----
+Or from the frontend folder:
 
-## 📁 Project Structure
-
-```
-src/
-├── main.jsx                        # React entry point
-├── App.jsx                         # Root component + routing between steps
-├── index.css                       # Global styles + CSS variables
-│
-├── data/
-│   └── quizzes.js                  # Mock quiz data, tag colours, bot responses
-│
-├── context/
-│   └── AnswerKeyContext.jsx         # Global saved-answers state (React Context)
-│
-├── hooks/
-│   ├── useDragDrop.js              # useDrag / useDrop — HTML5 drag API hooks
-│   └── useAnswerKeyHistory.js      # Undo/redo state + Ctrl+Z/Y keyboard handler
-│
-├── utils/
-│   └── validation.js               # validateMCQAnswer, validateAllQuestions,
-│                                   # isValidNumeric, parseBulkImport
-│
-└── components/
-    ├── ui/                         # Generic, reusable primitives
-    │   ├── Button.jsx              # Multi-variant button
-    │   ├── Badge.jsx               # Coloured status badge
-    │   ├── ProgressBar.jsx         # Animated progress bar
-    │   ├── Modal.jsx               # Backdrop modal with Escape-key support
-    │   └── index.js
-    │
-    ├── TopBar/                     # Sticky header + breadcrumb + avatar
-    │   ├── TopBar.jsx
-    │   └── index.js
-    │
-    ├── QuizSelector/               # Step-1 quiz list
-    │   ├── QuizSelector.jsx
-    │   └── index.js
-    │
-    ├── TagSidebar/                 # Left panel — draggable A/B/C/D tags
-    │   ├── TagSidebar.jsx
-    │   ├── DraggableTag.jsx        # Single draggable option pill
-    │   └── index.js
-    │
-    ├── AnswerKeySetup/             # Centre panel — question editor
-    │   ├── AnswerKeySetup.jsx      # Orchestrator (header, progress, question list)
-    │   ├── QuestionRow.jsx         # Single question row with drop target
-    │   ├── MCQInput.jsx            # A / B / C / D clickable buttons
-    │   ├── NumericInput.jsx        # Multi-answer numeric input + quick values
-    │   ├── TagDropZone.jsx         # Drop-target pill showing assigned tag
-    │   └── index.js
-    │
-    ├── BulkImportDialog/           # Modal for pasting answers in bulk
-    │   ├── BulkImportDialog.jsx
-    │   └── index.js
-    │
-    └── AIChatbot/                  # Right panel — help chatbot
-        ├── AIChatbot.jsx
-        └── index.js
+```bash
+cd frontend
+npm run preview
 ```
 
----
+## Backend Notes
 
-## ✨ Features
+- The backend server is in `backend/server.js`
+- Database loading logic is in `backend/omrDb.js`
+- The backend reads `.env` from:
+  - `backend/.env`
+  - or the project root `.env`
+- The current listing logic uses a temporary constant user filter in `backend/omrDb.js`
 
-| Feature | Details |
-|---|---|
-| **Quiz selection** | Choose from a list of OMR-configured quizzes |
-| **MCQ input** | Click A / B / C / D buttons to set answer |
-| **Drag & drop tags** | Drag coloured option pills from the left sidebar onto any MCQ row |
-| **Numeric input** | Add multiple accepted answers; quick-value buttons; remove chips |
-| **Undo / Redo** | Full history stack; `Ctrl+Z` / `Ctrl+Y` keyboard shortcuts |
-| **Bulk import** | Paste answers in `1:A`, `1,A`, `1 A`, or sequential format |
-| **Validation** | Required-field and format checks before save |
-| **Progress bar** | Live count of answered questions |
-| **AI chatbot** | Canned contextual help + quick-action chips |
-| **Global context** | Saved answers persisted across quiz re-opens |
+## Frontend Notes
 
----
+Important frontend files:
 
-## 🛠 Tech Stack
+- `frontend/src/App.jsx`
+- `frontend/src/api/omrSheetsApi.js`
+- `frontend/src/components/AnswerKeySetup/`
+- `frontend/src/components/BulkImportDialog/`
+- `frontend/src/utils/validation.js`
 
-- **React 18** — UI library
-- **Vite 5** — build tool & dev server
-- **lucide-react** — icon set
-- **HTML5 Drag and Drop API** — no external DnD library needed
+## Database Schema
 
----
+The latest schema file is stored at:
 
-## 🔌 Extending the App
+- `backend/database/schema.sql`
 
-### Connect a real API
-Replace the mock data in `src/data/quizzes.js` with API calls (e.g. `fetch`, React Query, SWR).
+## Troubleshooting
 
-### Add routing
-Install `react-router-dom` and wrap `<App>` with `<BrowserRouter>`. Each step (quiz list, setup) becomes its own route.
+### Port 3001 already in use
 
-### Persist answers
-Swap the in-memory `AnswerKeyContext` for a backend call inside `saveAnswers()`.
+If backend startup fails with `EADDRINUSE`, another process is already using port `3001`.
 
-### Add more question types
-Extend the `type` union in `QuestionRow` and add a new input component alongside `MCQInput` / `NumericInput`.
+Find the process:
+
+```bash
+lsof -i :3001
+```
+
+Kill it:
+
+```bash
+kill -9 <PID>
+```
+
+Or:
+
+```bash
+fuser -k 3001/tcp
+```
+
+### Backend starts but no quizzes appear
+
+If `/api/omr-sheets` returns:
+
+```json
+{"omr_sheets":[]}
+```
+
+then the backend is working, but the current DB query returned no matching rows for the active filter.
+
+### Database access errors
+
+Check that:
+
+- the root `.env` exists
+- DB credentials are correct
+- the database service is reachable
+- the schema matches `backend/database/schema.sql`

@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { CircleHelp, Info, Redo2, Undo2 } from 'lucide-react'
 
 function formatSaveStatus(saveStatus) {
-  if (!saveStatus) return ''
-  if (saveStatus.state === 'saving') return 'Saving...'
+  if (saveStatus == null) return ''
+  if (saveStatus.state === 'saving') return 'Saving draft...'
+  if (saveStatus.state === 'syncing') return 'Saving to database...'
   if (saveStatus.savedAt) {
-    return `Saved at ${new Date(saveStatus.savedAt).toLocaleTimeString('en-US', {
+    const prefix = saveStatus.scope === 'local' ? 'Draft saved at' : 'Saved at'
+    return `${prefix} ${new Date(saveStatus.savedAt).toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
@@ -14,9 +16,6 @@ function formatSaveStatus(saveStatus) {
   return ''
 }
 
-/**
- * TopBar — sticky header with logo, breadcrumb, autosave state, and info menu.
- */
 export function TopBar({ selectedQuiz, saveStatus, editorControls }) {
   const [isInfoOpen, setIsInfoOpen] = useState(false)
   const menuRef = useRef(null)
@@ -24,10 +23,10 @@ export function TopBar({ selectedQuiz, saveStatus, editorControls }) {
   const saveStatusLabel = useMemo(() => formatSaveStatus(saveStatus), [saveStatus])
 
   useEffect(() => {
-    if (!isInfoOpen) return undefined
+    if (isInfoOpen === false) return undefined
 
     const handlePointerDown = (event) => {
-      if (!menuRef.current?.contains(event.target)) {
+      if (menuRef.current?.contains(event.target) === false) {
         setIsInfoOpen(false)
       }
     }
@@ -64,8 +63,8 @@ export function TopBar({ selectedQuiz, saveStatus, editorControls }) {
 
       <div className="top-bar-actions">
         {selectedQuiz && saveStatusLabel && (
-          <div className={`top-bar-status-chip${saveStatus?.state === 'saving' ? ' is-saving' : ''}`}>
-            <span className={`status-dot${saveStatus?.state === 'saving' ? ' is-saving' : ''}`} />
+          <div className={`top-bar-status-chip${saveStatus?.state === 'saving' || saveStatus?.state === 'syncing' ? ' is-saving' : ''}`}>
+            <span className={`status-dot${saveStatus?.state === 'saving' || saveStatus?.state === 'syncing' ? ' is-saving' : ''}`} />
             {saveStatusLabel}
           </div>
         )}
@@ -80,7 +79,7 @@ export function TopBar({ selectedQuiz, saveStatus, editorControls }) {
             <button
               type="button"
               className="top-bar-info-button"
-              onClick={() => setIsInfoOpen((prev) => !prev)}
+              onClick={() => setIsInfoOpen((prev) => prev === false)}
               aria-label="Open info menu"
             >
               <Info size={18} />
@@ -95,7 +94,7 @@ export function TopBar({ selectedQuiz, saveStatus, editorControls }) {
                     editorControls.undo()
                     setIsInfoOpen(false)
                   }}
-                  disabled={!editorControls.canUndo}
+                  disabled={editorControls.canUndo === false}
                 >
                   <Undo2 size={15} />
                   Undo
@@ -108,7 +107,7 @@ export function TopBar({ selectedQuiz, saveStatus, editorControls }) {
                     editorControls.redo()
                     setIsInfoOpen(false)
                   }}
-                  disabled={!editorControls.canRedo}
+                  disabled={editorControls.canRedo === false}
                 >
                   <Redo2 size={15} />
                   Redo
